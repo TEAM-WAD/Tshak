@@ -48,6 +48,16 @@ jobs:
           EOF
           flutter create . --platforms=android --project-name tshak --org com.followerx.app
 
+      - name: Inject Internet Permission
+        run: |
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if grep -q "android.permission.INTERNET" "$MANIFEST_PATH"; then
+            echo "Internet permission already exists."
+          else
+            sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST_PATH"
+            echo "Internet permission successfully injected!"
+          fi
+
       - name: Fetch Dependencies
         run: flutter pub get
 
