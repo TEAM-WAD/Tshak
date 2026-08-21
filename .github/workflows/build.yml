@@ -49,6 +49,11 @@ jobs:
           EOF
           flutter create . --platforms=android --project-name tshak --org com.followerx.app
 
+      - name: Configure Gradle Java Version & Build Settings
+        run: |
+          sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' android/app/build.gradle
+          sed -i 's/jvmTarget = '\''1.8'\''/jvmTarget = '\''17'\''/g' android/app/build.gradle || true
+
       - name: Fetch Dependencies
         run: flutter pub get
 
