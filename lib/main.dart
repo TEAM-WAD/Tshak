@@ -190,7 +190,7 @@ Future<void> loadOrdersFromStorage() async {
   }
 }
 
-// Custom Rotating Emoji Settings Button Component
+// Custom Rotating Settings Button Component
 class RotatingSettingsEmoji extends StatefulWidget {
   final VoidCallback onTap;
   const RotatingSettingsEmoji({super.key, required this.onTap});
@@ -235,41 +235,44 @@ class _RotatingSettingsEmojiState extends State<RotatingSettingsEmoji> with Sing
   }
 }
 
-// RGB Animated Flow Header Container Title
-class RgbAnimatedHeaderTitle extends StatefulWidget {
-  const RgbAnimatedHeaderTitle({super.key});
+// Dynamic Glowing Border Box Widget
+class DynamicBorderTitleBox extends StatefulWidget {
+  final String text;
+  final bool isLarge;
+
+  const DynamicBorderTitleBox({super.key, required this.text, this.isLarge = false});
 
   @override
-  State<RgbAnimatedHeaderTitle> createState() => _RgbAnimatedHeaderTitleState();
+  State<DynamicBorderTitleBox> createState() => _DynamicBorderTitleBoxState();
 }
 
-class _RgbAnimatedHeaderTitleState extends State<RgbAnimatedHeaderTitle> with TickerProviderStateMixin {
+class _DynamicBorderTitleBoxState extends State<DynamicBorderTitleBox> with TickerProviderStateMixin {
   late AnimationController _colorController;
-  late AnimationController _scaleController;
-  late Animation<double> _scaleAnimation;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
     _colorController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 4),
     )..repeat();
 
-    _scaleController = AnimationController(
+    _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    _scaleAnimation = Tween<double>(begin: 0.96, end: 1.04).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
+    _pulseAnimation = Tween<double>(begin: 0.98, end: 1.03).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
 
   @override
   void dispose() {
     _colorController.dispose();
-    _scaleController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -278,37 +281,36 @@ class _RgbAnimatedHeaderTitleState extends State<RgbAnimatedHeaderTitle> with Ti
     return AnimatedBuilder(
       animation: _colorController,
       builder: (context, child) {
-        final value = _colorController.value;
-        final c1 = HSLColor.fromAHSL(1.0, (value * 360) % 360, 0.9, 0.5).toColor();
-        final c2 = HSLColor.fromAHSL(1.0, ((value + 0.33) * 360) % 360, 0.9, 0.5).toColor();
-        final c3 = HSLColor.fromAHSL(1.0, ((value + 0.66) * 360) % 360, 0.9, 0.5).toColor();
+        final val = _colorController.value;
+        final borderColor = HSLColor.fromAHSL(1.0, (val * 360) % 360, 0.9, 0.6).toColor();
 
         return ScaleTransition(
-          scale: _scaleAnimation,
+          scale: _pulseAnimation,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: EdgeInsets.symmetric(
+              horizontal: widget.isLarge ? 20 : 14,
+              vertical: widget.isLarge ? 10 : 6,
+            ),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                colors: [c1, c2, c3],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: const Color(0xFF1A1A1E),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor, width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: c1.withOpacity(0.4),
-                  blurRadius: 8,
+                  color: borderColor.withOpacity(0.35),
+                  blurRadius: 10,
                   spreadRadius: 1,
                 )
               ],
             ),
-            child: const Text(
-              'Follower X - فالوير اكـس',
+            child: Text(
+              widget.text,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: widget.isLarge ? 17 : 14,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
-                shadows: [Shadow(color: Colors.black45, blurRadius: 4)],
+                letterSpacing: 0.5,
               ),
             ),
           ),
@@ -318,13 +320,281 @@ class _RgbAnimatedHeaderTitleState extends State<RgbAnimatedHeaderTitle> with Ti
   }
 }
 
-// Base Scaffold Wrapper with Custom AppBar
+// Wave Dot Loading Animated Widget
+class WaveLoadingWidget extends StatefulWidget {
+  const WaveLoadingWidget({super.key});
+
+  @override
+  State<WaveLoadingWidget> createState() => _WaveLoadingWidgetState();
+}
+
+class _WaveLoadingWidgetState extends State<WaveLoadingWidget> with TickerProviderStateMixin {
+  late AnimationController _waveController;
+
+  @override
+  void initState() {
+    super.initState();
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _waveController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Loding',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 4),
+            AnimatedBuilder(
+              animation: _waveController,
+              builder: (context, child) {
+                return Row(
+                  children: List.generate(3, (index) {
+                    double delay = index * 0.2;
+                    double value = math.sin((_waveController.value * 2 * math.pi) - delay);
+                    return Transform.translate(
+                      offset: Offset(0, value * 6),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF00A2FF),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    );
+                  }),
+                );
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 25),
+        const RainbowSpinner(),
+      ],
+    );
+  }
+}
+
+// Multi-color Rotating Loading Spinner
+class RainbowSpinner extends StatefulWidget {
+  const RainbowSpinner({super.key});
+
+  @override
+  State<RainbowSpinner> createState() => _RainbowSpinnerState();
+}
+
+class _RainbowSpinnerState extends State<RainbowSpinner> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Color?> _colorAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+
+    _colorAnimation = TweenSequence<Color?>([
+      TweenSequenceItem(tween: ColorTween(begin: Colors.blue, end: Colors.purple), weight: 1),
+      TweenSequenceItem(tween: ColorTween(begin: Colors.purple, end: Colors.red), weight: 1),
+      TweenSequenceItem(tween: ColorTween(begin: Colors.red, end: Colors.orange), weight: 1),
+      TweenSequenceItem(tween: ColorTween(begin: Colors.orange, end: Colors.green), weight: 1),
+      TweenSequenceItem(tween: ColorTween(begin: Colors.green, end: Colors.blue), weight: 1),
+    ]).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return CircularProgressIndicator(
+          valueColor: _colorAnimation,
+          strokeWidth: 3.5,
+        );
+      },
+    );
+  }
+}
+
+// Global Top Animated Full Width Notification Popup
+void showRgbNotificationOverlay(BuildContext context, String message) {
+  final overlayState = Overlay.of(context);
+  late OverlayEntry overlayEntry;
+
+  overlayEntry = OverlayEntry(
+    builder: (context) {
+      return _RgbNotificationWidget(
+        message: message,
+        onDismiss: () {
+          if (overlayEntry.mounted) {
+            overlayEntry.remove();
+          }
+        },
+      );
+    },
+  );
+
+  overlayState.insert(overlayEntry);
+}
+
+class _RgbNotificationWidget extends StatefulWidget {
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _RgbNotificationWidget({required this.message, required this.onDismiss});
+
+  @override
+  State<_RgbNotificationWidget> createState() => _RgbNotificationWidgetState();
+}
+
+class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with TickerProviderStateMixin {
+  late AnimationController _borderController;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _borderController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
+
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -1.0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOutBack));
+
+    _fadeController.forward();
+
+    Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        _fadeController.reverse().then((_) {
+          widget.onDismiss();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _borderController.dispose();
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: AnimatedBuilder(
+                animation: _borderController,
+                builder: (context, child) {
+                  final val = _borderController.value;
+                  final animatedColor = HSLColor.fromAHSL(1.0, (val * 360) % 360, 0.9, 0.6).toColor();
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E24),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: animatedColor, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: animatedColor.withOpacity(0.35),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.check, color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              widget.message,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Base Scaffold Wrapper with Custom Animated Title
 class BaseScaffold extends StatelessWidget {
   final String title;
   final Widget body;
   final Function(bool) toggleTheme;
   final bool isDark;
-  final bool showAnimatedTitle;
+  final bool showHeaderTitle;
 
   const BaseScaffold({
     super.key,
@@ -332,7 +602,7 @@ class BaseScaffold extends StatelessWidget {
     required this.body,
     required this.toggleTheme,
     required this.isDark,
-    this.showAnimatedTitle = false,
+    this.showHeaderTitle = false,
   });
 
   void _showSettingsSheet(BuildContext context) {
@@ -349,7 +619,7 @@ class BaseScaffold extends StatelessWidget {
             return Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
-                mainAxisSize: minAxisSize,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     width: 40,
@@ -397,12 +667,9 @@ class BaseScaffold extends StatelessWidget {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           centerTitle: true,
-          title: showAnimatedTitle
-              ? const RgbAnimatedHeaderTitle()
-              : Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
+          title: showHeaderTitle
+              ? const DynamicBorderTitleBox(text: '𝐹𝑜𝓁𝓁𝑜𝓌𝑒𝓇 𝓍 - فالوير اکـس', isLarge: true)
+              : DynamicBorderTitleBox(text: title),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 22),
             onPressed: () => Navigator.maybePop(context),
@@ -459,204 +726,6 @@ class BaseScaffold extends StatelessWidget {
           ),
         ),
         body: body,
-      ),
-    );
-  }
-
-  static get minAxisSize => MainAxisSize.min;
-}
-
-// Multi-color Rotating Loading Spinner
-class RainbowSpinner extends StatefulWidget {
-  const RainbowSpinner({super.key});
-
-  @override
-  State<RainbowSpinner> createState() => _RainbowSpinnerState();
-}
-
-class _RainbowSpinnerState extends State<RainbowSpinner> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<Color?> _colorAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat();
-
-    _colorAnimation = TweenSequence<Color?>([
-      TweenSequenceItem(tween: ColorTween(begin: Colors.blue, end: Colors.purple), weight: 1),
-      TweenSequenceItem(tween: ColorTween(begin: Colors.purple, end: Colors.red), weight: 1),
-      TweenSequenceItem(tween: ColorTween(begin: Colors.red, end: Colors.orange), weight: 1),
-      TweenSequenceItem(tween: ColorTween(begin: Colors.orange, end: Colors.green), weight: 1),
-      TweenSequenceItem(tween: ColorTween(begin: Colors.green, end: Colors.blue), weight: 1),
-    ]).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return CircularProgressIndicator(
-          valueColor: _colorAnimation,
-          strokeWidth: 3.5,
-        );
-      },
-    );
-  }
-}
-
-// Global RGB Top Success Notification Popup Overlay
-void showRgbNotificationOverlay(BuildContext context, String message) {
-  final overlayState = Overlay.of(context);
-  late OverlayEntry overlayEntry;
-
-  overlayEntry = OverlayEntry(
-    builder: (context) {
-      return _RgbNotificationWidget(
-        message: message,
-        onDismiss: () {
-          if (overlayEntry.mounted) {
-            overlayEntry.remove();
-          }
-        },
-      );
-    },
-  );
-
-  overlayState.insert(overlayEntry);
-}
-
-class _RgbNotificationWidget extends StatefulWidget {
-  final String message;
-  final VoidCallback onDismiss;
-
-  const _RgbNotificationWidget({required this.message, required this.onDismiss});
-
-  @override
-  State<_RgbNotificationWidget> createState() => _RgbNotificationWidgetState();
-}
-
-class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with TickerProviderStateMixin {
-  late AnimationController _rgbController;
-  late AnimationController _fadeController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _rgbController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
-
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-
-    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, -0.8),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOutBack));
-
-    _fadeController.forward();
-
-    Timer(const Duration(seconds: 4), () {
-      if (mounted) {
-        _fadeController.reverse().then((_) {
-          widget.onDismiss();
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _rgbController.dispose();
-    _fadeController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: AnimatedBuilder(
-                animation: _rgbController,
-                builder: (context, child) {
-                  final val = _rgbController.value;
-                  final color1 = HSLColor.fromAHSL(1.0, (val * 360) % 360, 0.85, 0.5).toColor();
-                  final color2 = HSLColor.fromAHSL(1.0, ((val + 0.5) * 360) % 360, 0.85, 0.5).toColor();
-
-                  return Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        gradient: LinearGradient(
-                          colors: [color1, color2],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: color1.withOpacity(0.5),
-                            blurRadius: 12,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.check, color: Colors.green, size: 20),
-                          ),
-                          const SizedBox(width: 12),
-                          Flexible(
-                            child: Text(
-                              widget.message,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -729,17 +798,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             const SizedBox(height: 35),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'جاري التحميل...',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(width: 15),
-                RainbowSpinner(),
-              ],
-            ),
+            const WaveLoadingWidget(),
           ],
         ),
       ),
@@ -922,8 +981,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      title: 'Follower X',
-      showAnimatedTitle: true,
+      title: '𝐹𝑜𝓁𝓁𝑜𝓌𝑒𝓇 𝓍 - فالوير اکـس',
+      showHeaderTitle: true,
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: SingleChildScrollView(
@@ -984,6 +1043,24 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+
+            // Button: Add Funds / Top Up Account
+            _buildActionButton(
+              icon: Icons.add_card,
+              title: 'شحن الحساب (إضافة أموال)',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddFundsScreen(
+                      toggleTheme: widget.toggleTheme,
+                      isDark: widget.isDark,
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 20),
 
@@ -1101,7 +1178,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(15),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(15),
@@ -1219,7 +1296,108 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// 4. Platform Services Screen
+// 4. Add Funds Screen (شحن الحساب)
+class AddFundsScreen extends StatelessWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+
+  const AddFundsScreen({super.key, required this.toggleTheme, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseScaffold(
+      title: 'شحن الحساب',
+      toggleTheme: toggleTheme,
+      isDark: isDark,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            const Text(
+              'طرق دفع المتوفرة داخل التطبيق حالياً',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 25),
+            _buildPaymentTile(
+              context: context,
+              title: 'ماستر كارد / Mastercard',
+              subtitle: 'دفع مباشر عبر البطاقات البنكية',
+              icon: Icons.credit_card,
+              iconColor: Colors.orange,
+            ),
+            const SizedBox(height: 15),
+            _buildPaymentTile(
+              context: context,
+              title: 'آسيا سيل / AsiaCell',
+              subtitle: 'تحويل رصيد أو كارتات شحن',
+              icon: Icons.phone_android,
+              iconColor: Colors.redAccent,
+            ),
+            const SizedBox(height: 15),
+            _buildPaymentTile(
+              context: context,
+              title: 'زين كاش / Zain Cash',
+              subtitle: 'الدفع المباشر عبر محفظة زين كاش',
+              icon: Icons.account_balance_wallet,
+              iconColor: Colors.pink,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentTile({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+        ],
+      ),
+    );
+  }
+}
+
+// 5. Platform Services Screen
 class PlatformServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -1302,7 +1480,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: isLoading
-          ? const Center(child: RainbowSpinner())
+          ? const Center(child: WaveLoadingWidget())
           : errorMessage != null
               ? Center(
                   child: Padding(
@@ -1368,7 +1546,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
   }
 }
 
-// 5. Free Services Screen
+// 6. Free Services Screen
 class FreeServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -1433,7 +1611,7 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: isLoading
-          ? const Center(child: RainbowSpinner())
+          ? const Center(child: WaveLoadingWidget())
           : errorMessage != null
               ? Center(
                   child: Padding(
@@ -1482,7 +1660,7 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
   }
 }
 
-// 6. Order Form Screen
+// 7. Order Form Screen
 class OrderFormScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -1580,7 +1758,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           await saveOrdersToStorage();
 
           if (!mounted) return;
-          showRgbNotificationOverlay(context, 'تم ارسال طلبك الان بنجاح .');
+          showRgbNotificationOverlay(context, 'تم اكتمال طلبك بنجاح الان ✔');
           Navigator.pop(context);
         } else {
           final err = data['error'] ?? 'حدث خطأ أثناء تنفيذ الطلب';
@@ -1689,7 +1867,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   }
 }
 
-// 7. Order History Screen
+// 8. Order History Screen
 class OrderHistoryScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
