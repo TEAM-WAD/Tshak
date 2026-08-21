@@ -13,9 +13,9 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x'
+          flutter-version: '3.24.0'
 
-      # إنشاء ملفات الأندرويد باسم مشروط بحروف صغيرة
+      # إنشاء ملفات الأندرويد تلقائياً
       - name: Generate Android Files
         run: flutter create . --platforms=android --org com.followerx.app --project-name tshak
 
@@ -23,11 +23,11 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # بناء ملف الـ APK النهائي
+      # بناء ملف APK
       - name: Build Release APK
         run: flutter build apk --release
 
-      # رفع الملف الناتج مع أداة v4 الحديثة
+      # رفع الملف الناتج
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
