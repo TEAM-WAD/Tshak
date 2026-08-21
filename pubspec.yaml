@@ -1,6 +1,6 @@
 name: Build APK Automatically
 
-on
+on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
@@ -23,13 +23,13 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Rebuild Android Config & Add Packages
+      - name: Rebuild Android Directory & Inject Dependencies
         run: |
           rm -rf android
           flutter create . --platforms=android --org com.followerx.app
-          flutter pub add http shared_preferences
+          flutter pub add shared_preferences http
 
-      - name: Fetch Dependencies
+      - name: Fetch and Install Dependencies
         run: flutter pub get
 
       - name: Build Release APK
