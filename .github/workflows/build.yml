@@ -9,9 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
@@ -22,16 +23,18 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Generate Android Files
-        run: flutter create . --platforms=android
+      - name: Delete Old Android Folder & Recreate Clean Project
+        run: |
+          rm -rf android
+          flutter create . --platforms=android --org com.followerx.app
 
-      - name: Install Dependencies
+      - name: Fetch and Install Dependencies
         run: flutter pub get
 
       - name: Build Release APK
         run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
