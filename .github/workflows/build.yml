@@ -23,10 +23,31 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Create Android Platform Only
+      - name: Generate Valid Pubspec & Android Project
         run: |
           rm -rf android
-          flutter create . --platforms=android --project-name tshak --offline || true
+          cat << 'EOF' > pubspec.yaml
+          name: tshak
+          description: "Follower X App"
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            http: ^1.2.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+
+          flutter:
+            uses-material-design: true
+          EOF
+          flutter create . --platforms=android --project-name tshak --org com.followerx.app
 
       - name: Fetch Dependencies
         run: flutter pub get
