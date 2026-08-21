@@ -23,7 +23,7 @@ jobs:
         with:
           channel: 'stable'
 
-      # إنشاء ملف pubspec.yaml بالمكتبات المطلوبة
+      # إنشاء ملف pubspec.yaml بالمكتبات المطلوبة مع ضبط المسافات
       - name: Create pubspec.yaml automatically
         run: |
           cat <<'EOF' > pubspec.yaml
@@ -51,11 +51,23 @@ jobs:
             uses-material-design: true
           EOF
 
-      # إعادة إنشاء مجلد Android المفقود تلقائياً بدون مسح pubspec.yaml
+      # إعادة إنشاء مجلد Android المفقود تلقائياً
       - name: Recreate Android Project Files if Missing
         run: |
           if [ ! -d "android" ]; then
             flutter create . --platforms=android --org=com.example
+          fi
+
+      # إضافة كافة الصلاحيات اللازمة للتطبيق في ملف AndroidManifest.xml
+      - name: Inject Android Permissions
+        run: |
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ]; then
+            sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST_PATH"
+            sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST_PATH"
+            sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>' "$MANIFEST_PATH"
+            sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>' "$MANIFEST_PATH"
+            sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>' "$MANIFEST_PATH"
           fi
 
       - name: Install Dependencies
