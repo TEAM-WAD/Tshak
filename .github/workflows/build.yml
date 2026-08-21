@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Flet APK
 
 on:
   push:
@@ -13,26 +13,35 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
       - name: Install Dependencies
         run: |
-          sudo apt update
-          sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libreadline-dev libsqlite3-dev libgdbm-dev libdb5.3-dev libbz2-dev libexpat1-dev liblzma-dev tk-dev libffi-dev libssl-dev ccache
-          pip install --upgrade pip
-          pip install buildozer cython flet
+          python -m pip install --upgrade pip
+          pip install flet
 
-      - name: Build APK with Buildozer
+      - name: Build APK with Flet
         run: |
-          yes | buildozer -v android debug
+          flet build apk --verbose
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: followerx-app
-          path: bin/*.apk
+          path: build/apk/*.apk
