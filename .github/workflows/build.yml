@@ -21,10 +21,9 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
           channel: 'stable'
 
-      - name: Prepare Pubspec & Android
+      - name: Setup Project Files
         run: |
           rm -rf android
           cat << 'EOF' > pubspec.yaml
@@ -50,11 +49,14 @@ jobs:
           EOF
           flutter create . --platforms=android --project-name tshak --org com.followerx.app
 
-      - name: Install Dependencies
+      - name: Fetch Dependencies
         run: flutter pub get
 
-      - name: Build Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+      - name: Build Unsigned Release APK Direct
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease -Ptarget=../lib/main.dart --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
