@@ -13,21 +13,17 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          channel: 'stable'
 
-      # إنشاء ملفات الأندرويد تلقائياً
       - name: Generate Android Files
         run: flutter create . --platforms=android --org com.followerx.app --project-name tshak
 
-      # جلب المكتبات
       - name: Install Dependencies
         run: flutter pub get
 
-      # بناء ملف APK
       - name: Build Release APK
         run: flutter build apk --release
 
-      # رفع الملف الناتج
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
