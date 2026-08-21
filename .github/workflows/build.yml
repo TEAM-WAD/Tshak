@@ -1,5 +1,4 @@
-              name: Build APK Automatically
-
+name: Build APK Automatically
 on:
   push:
     branches: [ main, master ]
