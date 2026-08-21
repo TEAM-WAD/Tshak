@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'dart:async';
 
 void main() {
@@ -24,9 +22,7 @@ class FollowerXApp extends StatelessWidget {
   }
 }
 
-// ----------------------------------------------------
 // 1. شاشة التحميل (Splash Screen)
-// ----------------------------------------------------
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -36,11 +32,11 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   final List<IconData> _socialIcons = [
-    FontAwesomeIcons.facebook,
-    FontAwesomeIcons.tiktok,
-    FontAwesomeIcons.instagram,
-    FontAwesomeIcons.spotify,
-    FontAwesomeIcons.youtube,
+    Icons.facebook,
+    Icons.video_library,
+    Icons.camera_alt,
+    Icons.music_note,
+    Icons.play_circle_fill,
   ];
 
   int _currentIconIndex = 0;
@@ -78,7 +74,7 @@ class _SplashScreenState extends State<SplashScreen> {
           children: [
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              child: FaIcon(
+              child: Icon(
                 _socialIcons[_currentIconIndex],
                 key: ValueKey<int>(_currentIconIndex),
                 size: 80,
@@ -88,17 +84,17 @@ class _SplashScreenState extends State<SplashScreen> {
             const SizedBox(height: 30),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              children: const [
                 Text(
                   'Loading...',
-                  style: GoogleFonts.cairo(
+                  style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(width: 15),
-                const SizedBox(
+                SizedBox(width: 15),
+                SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
@@ -115,9 +111,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// ----------------------------------------------------
-// 2. شاشة تسجيل الدخول الاحترافية (Login Screen)
-// ----------------------------------------------------
+// 2. شاشة تسجيل الدخول (Login Screen)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -159,9 +153,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Icon(Icons.lock_outline, size: 50, color: Colors.blueAccent),
                 ),
                 const SizedBox(height: 20),
-                Text(
+                const Text(
                   'تسجيل الدخول',
-                  style: GoogleFonts.cairo(
+                  style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -173,7 +167,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'اسم المستخدم',
-                    labelStyle: GoogleFonts.cairo(color: Colors.grey),
+                    labelStyle: const TextStyle(color: Colors.grey),
                     prefixIcon: const Icon(Icons.person, color: Colors.blueAccent),
                     filled: true,
                     fillColor: const Color(0xFF1E1E24),
@@ -190,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     labelText: 'كلمة المرور',
-                    labelStyle: GoogleFonts.cairo(color: Colors.grey),
+                    labelStyle: const TextStyle(color: Colors.grey),
                     prefixIcon: const Icon(Icons.lock, color: Colors.blueAccent),
                     filled: true,
                     fillColor: const Color(0xFF1E1E24),
@@ -204,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _errorMessage!,
-                    style: GoogleFonts.cairo(color: Colors.redAccent, fontSize: 14),
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 14),
                   ),
                 ],
                 const SizedBox(height: 25),
@@ -219,9 +213,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    child: Text(
+                    child: const Text(
                       'دخول',
-                      style: GoogleFonts.cairo(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -238,9 +232,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ----------------------------------------------------
-// 3. الشاشة الرئيسية والتصميم المطابق للصور (Home Screen)
-// ----------------------------------------------------
+// 3. الشاشة الرئيسية (Home Screen)
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -262,29 +254,23 @@ class HomeScreen extends StatelessWidget {
         drawer: Drawer(
           backgroundColor: const Color(0xFF1A1A1E),
           child: Column(
-            children: [
-              const SizedBox(height: 60),
-              Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Colors.blue, Colors.purple],
-                  ),
-                ),
-                child: const Icon(Icons.person, size: 50, color: Colors.white),
+            children: const [
+              SizedBox(height: 60),
+              CircleAvatar(
+                radius: 45,
+                backgroundColor: Colors.blueAccent,
+                child: Icon(Icons.person, size: 50, color: Colors.white),
               ),
-              const SizedBox(height: 15),
+              SizedBox(height: 15),
               Text(
                 'follwer X',
-                style: GoogleFonts.cairo(
+                style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
-              const Divider(color: Colors.grey, height: 40),
+              Divider(color: Colors.grey, height: 40),
             ],
           ),
         ),
@@ -292,7 +278,6 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10),
           child: Column(
             children: [
-              // سطر الأزرار العلوية
               Row(
                 children: [
                   Expanded(
@@ -313,7 +298,6 @@ class HomeScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              // زر طلباتي المستطيل
               SizedBox(
                 width: double.infinity,
                 child: _buildHeaderButton(
@@ -324,18 +308,17 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 25),
 
-              // القسم الأول: اختر الفئة (مطابق للفيجوال)
               Align(
                 alignment: Alignment.centerRight,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
+                    const Text(
                       'اختر الفئة',
-                      style: GoogleFonts.cairo(
+                      style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF29B6F6),
+                        color: Color(0xFF29B6F6),
                       ),
                     ),
                     CustomPaint(
@@ -350,15 +333,14 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 35),
 
-              // القسم الثاني: طرق دفع متعددة (مطابق للفيجوال)
               Column(
                 children: [
-                  Text(
+                  const Text(
                     'طرق دفع متعددة',
-                    style: GoogleFonts.cairo(
+                    style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF29B6F6),
+                      color: Color(0xFF29B6F6),
                     ),
                   ),
                   Container(
@@ -381,7 +363,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // كروت الأزرار العلوية
   Widget _buildHeaderButton({required IconData icon, required String title, required Color color}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -397,26 +378,25 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             title,
-            style: GoogleFonts.cairo(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
           ),
         ],
       ),
     );
   }
 
-  // شبكة الفئات المتطابقة مع الصورة الأولى
   Widget _buildCategoryGrid() {
     final List<Map<String, dynamic>> categories = [
-      {'icon': FontAwesomeIcons.tiktok, 'color': const Color(0xFFFF004F)},
-      {'icon': FontAwesomeIcons.facebookF, 'color': const Color(0xFF1877F2)},
-      {'icon': FontAwesomeIcons.youtube, 'color': const Color(0xFFFF0000)},
-      {'icon': FontAwesomeIcons.twitter, 'color': const Color(0xFF1DA1F2)},
-      {'icon': FontAwesomeIcons.instagram, 'color': const Color(0xFFE1306C)},
-      {'icon': FontAwesomeIcons.kickstarter, 'color': const Color(0xFF05CE78)},
-      {'icon': FontAwesomeIcons.soundcloud, 'color': const Color(0xFFFF5500)},
-      {'icon': FontAwesomeIcons.spotify, 'color': const Color(0xFF1DB954)},
-      {'icon': FontAwesomeIcons.telegram, 'color': const Color(0xFF0088CC)},
-      {'icon': FontAwesomeIcons.twitch, 'color': const Color(0xFF9146FF)},
+      {'icon': Icons.tiktok, 'color': const Color(0xFFFF004F)},
+      {'icon': Icons.facebook, 'color': const Color(0xFF1877F2)},
+      {'icon': Icons.play_arrow, 'color': const Color(0xFFFF0000)},
+      {'icon': Icons.flutter_dash, 'color': const Color(0xFF1DA1F2)},
+      {'icon': Icons.camera_alt, 'color': const Color(0xFFE1306C)},
+      {'icon': Icons.grid_view, 'color': const Color(0xFF05CE78)},
+      {'icon': Icons.cloud, 'color': const Color(0xFFFF5500)},
+      {'icon': Icons.music_note, 'color': const Color(0xFF1DB954)},
+      {'icon': Icons.send, 'color': const Color(0xFF0088CC)},
+      {'icon': Icons.tv, 'color': const Color(0xFF9146FF)},
     ];
 
     return GridView.builder(
@@ -436,23 +416,22 @@ class HomeScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           child: Center(
-            child: FaIcon(categories[index]['icon'], color: Colors.white, size: 28),
+            child: Icon(categories[index]['icon'], color: Colors.white, size: 28),
           ),
         );
       },
     );
   }
 
-  // شبكة الدفع المتطابقة مع الصورة الثانية
   Widget _buildPaymentGrid() {
     final List<Map<String, dynamic>> payments = [
       {'name': 'VISA', 'color': Colors.blue, 'isText': true},
-      {'icon': FontAwesomeIcons.mastercard, 'color': Colors.orangeAccent},
+      {'icon': Icons.credit_card, 'color': Colors.orangeAccent},
       {'name': 'USDT', 'color': Colors.teal, 'isText': true},
       {'name': 'PAYTR', 'color': Colors.lightBlue, 'isText': true},
       {'name': 'cryptomus', 'color': Colors.white, 'isText': true},
       {'name': 'PAYEER', 'color': Colors.cyan, 'isText': true},
-      {'icon': FontAwesomeIcons.bitcoin, 'color': Colors.amber},
+      {'icon': Icons.currency_bitcoin, 'color': Colors.amber},
       {'name': 'stripe', 'color': Colors.purpleAccent, 'isText': true},
     ];
 
@@ -484,7 +463,7 @@ class HomeScreen extends StatelessWidget {
                       fontSize: 18,
                     ),
                   )
-                : FaIcon(item['icon'], color: item['color'], size: 32),
+                : Icon(item['icon'], color: item['color'], size: 32),
           ),
         );
       },
@@ -492,7 +471,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-// رسم السهم الأزرق المنحني لمطابقة كلمة "اختر الفئة"
 class ArrowPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
