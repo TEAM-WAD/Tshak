@@ -1,7 +1,6 @@
 name: follower_x
-description: "Follower X - تطبيق خدمات التواصل الاجتماعي"
+description: "Follower X App"
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -10,12 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
-  # المكتبات الأساسية المستخدمة في الكود
   http: ^1.2.0
   shared_preferences: ^2.2.2
-
-  # الأيقونات الأساسية
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
@@ -25,7 +20,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  # في حال أردت إضافة صور أو خطوط مستقبلاً يمكنك إلغاء تعليق الأسطر التالية:
-  # assets:
-  #   - assets/images/
