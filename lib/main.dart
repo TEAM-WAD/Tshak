@@ -939,28 +939,28 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
           switch (key) {
             case 'instagram':
               return cat.contains('instagram') || name.contains('instagram') ||
-                  cat.contains('انست') || name.contains('انست');
+                  cat.contains('انستجرام') || name.contains('انستغرام');
             case 'facebook':
               return cat.contains('facebook') || name.contains('facebook') ||
-                  cat.contains('فيس') || name.contains('فيس');
+                  cat.contains('فيسبوك') || name.contains('فيس بوك');
             case 'tiktok':
               return cat.contains('tiktok') || name.contains('tiktok') ||
-                  cat.contains('تيك') || name.contains('تيك');
+                  cat.contains('تيكتوك') || name.contains('تيك توك');
             case 'telegram':
               return cat.contains('telegram') || name.contains('telegram') ||
-                  cat.contains('تلي') || name.contains('تلي') || cat.contains('تلغ');
+                  cat.contains('تليكرام') || name.contains('تليجرام') || cat.contains('تلغ');
             case 'twitter':
               return cat.contains('twitter') || name.contains('twitter') ||
-                  cat.contains('تويتر') || name.contains('تويتر') || cat.contains(' x ') || name.contains(' x ');
+                  cat.contains('تويتر x') || name.contains('X تويتر') || cat.contains(' x ') || name.contains(' x ');
             case 'whatsapp':
               return cat.contains('whatsapp') || name.contains('whatsapp') ||
-                  cat.contains('واتس') || name.contains('واتس');
+                  cat.contains('واتساب') || name.contains('وتساب');
             case 'spotify':
               return cat.contains('spotify') || name.contains('spotify') ||
                   cat.contains('سبوت') || name.contains('سبوت');
             case 'threads':
               return cat.contains('threads') || name.contains('threads') ||
-                  cat.contains('ثريد') || name.contains('ثريد');
+                  cat.contains('ثريدز') || name.contains('ثريد');
             default:
               return cat.contains(key) || name.contains(key);
           }
@@ -1092,10 +1092,10 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
           return rateNum == 0.0 ||
               s.rate == '0' ||
               s.rate == '0.00' ||
-              name.contains('مجان') ||
+              name.contains('مجاني') ||
               name.contains('free') ||
-              cat.contains('مجان') ||
-              cat.contains('free');
+              cat.contains('مجانيه') ||
+              cat.contains('مجانية');
         }).toList();
 
         // في حال عدم وجود خدمات سعرها 0 يتم عرض أرخص الخدمات المتاحة
