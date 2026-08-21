@@ -15,19 +15,19 @@ jobs:
         with:
           flutter-version: '3.x'
 
-      # إنشاء مجلد الأندرويد تلقائياً
+      # إنشاء ملفات الأندرويد باسم مشروط بحروف صغيرة
       - name: Generate Android Files
-        run: flutter create . --platforms=android --org com.followerx.app
+        run: flutter create . --platforms=android --org com.followerx.app --project-name tshak
 
-      # تثبيت المكتبات
+      # جلب المكتبات
       - name: Install Dependencies
         run: flutter pub get
 
-      # بناء ملف APK
+      # بناء ملف الـ APK النهائي
       - name: Build Release APK
         run: flutter build apk --release
 
-      # رفع الملف المحدث إلى الإصدار v4
+      # رفع الملف الناتج مع أداة v4 الحديثة
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
