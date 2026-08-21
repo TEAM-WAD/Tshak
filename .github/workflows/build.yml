@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK Automatically
 
 on:
   push:
@@ -9,19 +9,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.x'
 
-      # هذا السطر يولد مجلد android تلقائياً بالكامل
-      - run: flutter create . --platforms=android
+      # إنشاء مجلد الأندرويد تلقائياً
+      - name: Generate Android Files
+        run: flutter create . --platforms=android --org com.followerx.app
 
-      - run: flutter pub get
-      - run: flutter build apk --release
+      # تثبيت المكتبات
+      - name: Install Dependencies
+        run: flutter pub get
 
-      - uses: actions/upload-artifact@v3
+      # بناء ملف APK
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      # رفع الملف المحدث إلى الإصدار v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
