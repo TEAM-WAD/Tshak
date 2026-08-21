@@ -836,8 +836,8 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (_) => PlatformServicesScreen(
               toggleTheme: widget.toggleTheme,
               isDark: widget.isDark,
-              platformName: platform['name'],
-              platformKey: platform['key'],
+              platformName: platform['name'] as String,
+              platformKey: platform['key'] as String,
             ),
           ),
         );
@@ -858,11 +858,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: (platform['color'] as Color).withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: Icon(platform['icon'], color: platform['color'], size: 24),
+              child: Icon(platform['icon'] as IconData, color: platform['color'] as Color, size: 24),
             ),
             const SizedBox(width: 12),
             Text(
-              platform['name'],
+              platform['name'] as String,
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ],
@@ -952,8 +952,10 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
                         ),
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 6),
-                          style: const TextStyle(color: Colors.grey, fontSize: 12),
-                          child: Text('ID: ${item.service} | الحد الأدنى: ${item.min} - الأقصى: ${item.max}'),
+                          child: Text(
+                            'ID: ${item.service} | الحد الأدنى: ${item.min} - الأقصى: ${item.max}',
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
                         ),
                         trailing: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -987,7 +989,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
 }
 
 // 5. Free Services Screen
-class FreeServicesScreen extends StatefulWidget {
+class FreeServicesScreen extends StatelessWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
   final List<ServiceModel> allServices;
@@ -1000,90 +1002,45 @@ class FreeServicesScreen extends StatefulWidget {
   });
 
   @override
-  State<FreeServicesScreen> createState() => _FreeServicesScreenState();
-}
-
-class _FreeServicesScreenState extends State<FreeServicesScreen> {
-  List<ServiceModel> freeServices = [];
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _filterFreeServices();
-  }
-
-  void _filterFreeServices() {
-    setState(() {
-      freeServices = widget.allServices.where((s) {
-        final rateNum = double.tryParse(s.rate) ?? 1.0;
-        return rateNum == 0.0 || s.rate == "0.00" || s.rate == "0" || s.name.contains("مجاني") || s.name.contains("Free");
-      }).toList();
-      isLoading = false;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final freeServices = allServices.where((s) => s.rate == '0' || s.rate == '0.00' || s.name.contains('مجاني')).toList();
+
     return BaseScaffold(
-      title: 'Follower X',
-      toggleTheme: widget.toggleTheme,
-      isDark: widget.isDark,
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            const Text(
-              'الخدمات المجانية بالتطبيق',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
+      title: 'الخدمات المجانية',
+      toggleTheme: toggleTheme,
+      isDark: isDark,
+      body: freeServices.isEmpty
+          ? const Center(child: Text('لا توجد خدمات مجانية متاحة حالياً'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: freeServices.length,
+              itemBuilder: (context, index) {
+                final item = freeServices[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('ID: ${item.service}'),
+                    trailing: ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => OrderFormScreen(
+                              toggleTheme: toggleTheme,
+                              isDark: isDark,
+                              service: item,
+                            ),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+                      child: const Text('طلب', style: TextStyle(color: Colors.white)),
+                    ),
+                  ),
+                );
+              },
             ),
-            const SizedBox(height: 15),
-            Expanded(
-              child: isLoading
-                  ? const Center(child: RainbowSpinner())
-                  : freeServices.isEmpty
-                      ? const Center(child: Text('لا توجد خدمات مجانية متوفرة الآن'))
-                      : ListView.builder(
-                          itemCount: freeServices.length,
-                          itemBuilder: (context, index) {
-                            final item = freeServices[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                              child: ListTile(
-                                title: Center(
-                                  child: Text(
-                                    item.name,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                  ),
-                                ),
-                                subtitle: Center(
-                                  child: Text(
-                                    'السعر: 0.00\$',
-                                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => OrderFormScreen(
-                                        toggleTheme: widget.toggleTheme,
-                                        isDark: widget.isDark,
-                                        service: item,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1108,50 +1065,16 @@ class OrderFormScreen extends StatefulWidget {
 class _OrderFormScreenState extends State<OrderFormScreen> {
   final _linkController = TextEditingController();
   final _quantityController = TextEditingController();
-
-  String? quantityError;
-  double calculatedCost = 0.0;
   bool isSubmitting = false;
 
-  void _onQuantityChanged(String val) {
-    final qty = int.tryParse(val);
-    final min = int.tryParse(widget.service.min) ?? 1;
-    final max = int.tryParse(widget.service.max) ?? 1000000;
-    final rate = double.tryParse(widget.service.rate) ?? 0.0;
-
-    if (qty == null) {
-      setState(() {
-        quantityError = null;
-        calculatedCost = 0.0;
-      });
-      return;
-    }
-
-    if (qty < min) {
-      setState(() {
-        quantityError = 'الكمية أقل من الحد الأدنى المسموح ($min)';
-        calculatedCost = (qty * rate) / 1000;
-      });
-    } else if (qty > max) {
-      setState(() {
-        quantityError = 'الكمية أكبر من الحد الأقصى المسموح ($max)';
-        calculatedCost = (qty * rate) / 1000;
-      });
-    } else {
-      setState(() {
-        quantityError = null;
-        calculatedCost = (qty * rate) / 1000;
-      });
-    }
-  }
-
   Future<void> _submitOrder() async {
-    if (_linkController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الرابط')));
-      return;
-    }
-    if (_quantityController.text.trim().isEmpty || quantityError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى التأكد من الكمية المدخلة')));
+    final link = _linkController.text.trim();
+    final quantity = _quantityController.text.trim();
+
+    if (link.isEmpty || quantity.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى ملء جميع الحقول المطلوبة')),
+      );
       return;
     }
 
@@ -1164,48 +1087,50 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           'key': apiKey,
           'action': 'add',
           'service': widget.service.service,
-          'link': _linkController.text.trim(),
-          'quantity': _quantityController.text.trim(),
+          'link': link,
+          'quantity': quantity,
         },
       );
 
       if (response.statusCode == 200) {
-        final resData = json.decode(response.body);
-        if (resData['order'] != null) {
-          final newOrder = OrderModel(
-            order: resData['order'].toString(),
-            status: 'قيد الانتظار',
-            charge: calculatedCost.toStringAsFixed(2),
-            startCount: '-',
-            remains: _quantityController.text.trim(),
-            link: _linkController.text.trim(),
-            serviceName: widget.service.name,
-            date: DateTime.now().toString().split(' ')[0],
+        final data = json.decode(response.body);
+        if (data['order'] != null) {
+          userOrdersStore.add(
+            OrderModel(
+              order: data['order'].toString(),
+              status: 'Pending',
+              charge: '0.00',
+              startCount: '0',
+              remains: quantity,
+              link: link,
+              serviceName: widget.service.name,
+              date: DateTime.now().toString().split('.')[0],
+            ),
           );
-          userOrdersStore.insert(0, newOrder);
 
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('تم ارسال طلبك بنجاح'), backgroundColor: Colors.green),
-            );
-            Navigator.popUntil(context, (route) => route.isFirst);
-          }
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تم إرسال الطلب بنجاح! رقم الطلب: ${data['order']}')),
+          );
+          Navigator.pop(context);
         } else {
-          final err = resData['error'] ?? 'فشل إرسال الطلب';
+          final err = data['error'] ?? 'حدث خطأ أثناء تنفيذ الطلب';
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
         }
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('حدث خطأ في الاتصال بالخادم')));
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('فشل الاتصال بالسيرفر')),
+      );
     } finally {
-      setState(() => isSubmitting = false);
+      if (mounted) setState(() => isSubmitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      title: 'طلب جديد',
+      title: 'إنشاء طلب جديد',
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: SingleChildScrollView(
@@ -1213,86 +1138,42 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('الخدمة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Text(
-                '${widget.service.service} - ${widget.service.name} - \$${widget.service.rate}',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
+            Card(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.service.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text('السعر لكل 1000: \$${widget.service.rate}', style: const TextStyle(color: Color(0xFF00A2FF))),
+                  Text('الحد الأدنى: ${widget.service.min} | الحد الأقصى: ${widget.service.max}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
               ),
             ),
             const SizedBox(height: 20),
-
-            const Text('الرابط', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
             TextField(
               controller: _linkController,
               decoration: InputDecoration(
-                hintText: 'ضع الرابط هنا',
+                labelText: 'رابط الحساب / المنشور',
+                prefixIcon: const Icon(Icons.link, color: Color(0xFF00A2FF)),
                 filled: true,
                 fillColor: Theme.of(context).cardColor,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
               ),
             ),
-            const SizedBox(height: 20),
-
-            const Text('الكمية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 15),
             TextField(
               controller: _quantityController,
               keyboardType: TextInputType.number,
-              onChanged: _onQuantityChanged,
               decoration: InputDecoration(
-                hintText: 'ادخل الكمية',
+                labelText: 'الكمية',
+                prefixIcon: const Icon(Icons.numbers, color: Color(0xFF00A2FF)),
                 filled: true,
                 fillColor: Theme.of(context).cardColor,
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide(color: quantityError != null ? Colors.red : const Color(0xFF00A2FF)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide(color: quantityError != null ? Colors.red : Colors.transparent),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'الحد الأدنى: ${widget.service.min} - الحد الأقصى: ${widget.service.max}',
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-            if (quantityError != null) ...[
-              const SizedBox(height: 6),
-              Text(quantityError!, style: const TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold)),
-            ],
-
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('التكلفة:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text(
-                    '\$${calculatedCost.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
+            const SizedBox(height: 25),
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -1304,7 +1185,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                 ),
                 child: isSubmitting
                     ? const RainbowSpinner()
-                    : const Text('إرسال', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text('تأكيد الطلب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ],
@@ -1315,214 +1196,52 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
 }
 
 // 7. Order History Screen
-class OrderHistoryScreen extends StatefulWidget {
+class OrderHistoryScreen extends StatelessWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
 
   const OrderHistoryScreen({super.key, required this.toggleTheme, required this.isDark});
 
   @override
-  State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
-}
-
-class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
-  bool isRefreshing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshOrderStatuses();
-  }
-
-  Future<void> _refreshOrderStatuses() async {
-    if (userOrdersStore.isEmpty) return;
-    setState(() => isRefreshing = true);
-
-    for (int i = 0; i < userOrdersStore.length; i++) {
-      try {
-        final res = await http.post(
-          Uri.parse(apiUrl),
-          body: {
-            'key': apiKey,
-            'action': 'status',
-            'order': userOrdersStore[i].order,
-          },
-        );
-        if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          if (data['status'] != null) {
-            final st = data['status'].toString();
-            String statusAr = st;
-            if (st.toLowerCase() == 'pending') statusAr = 'قيد الانتظار';
-            if (st.toLowerCase() == 'processing' || st.toLowerCase() == 'in progress') statusAr = 'قيد التنفيذ';
-            if (st.toLowerCase() == 'completed') statusAr = 'مكتمل';
-            if (st.toLowerCase() == 'canceled') statusAr = 'ملغى';
-
-            userOrdersStore[i] = OrderModel(
-              order: userOrdersStore[i].order,
-              status: statusAr,
-              charge: data['charge']?.toString() ?? userOrdersStore[i].charge,
-              startCount: data['start_count']?.toString() ?? userOrdersStore[i].startCount,
-              remains: data['remains']?.toString() ?? userOrdersStore[i].remains,
-              link: userOrdersStore[i].link,
-              serviceName: userOrdersStore[i].serviceName,
-              date: userOrdersStore[i].date,
-            );
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (mounted) {
-      setState(() => isRefreshing = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     return BaseScaffold(
       title: 'سجل الطلبات',
-      toggleTheme: widget.toggleTheme,
-      isDark: widget.isDark,
+      toggleTheme: toggleTheme,
+      isDark: isDark,
       body: userOrdersStore.isEmpty
           ? const Center(child: Text('لا توجد طلبات سابقة'))
-          : RefreshIndicator(
-              onRefresh: _refreshOrderStatuses,
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: userOrdersStore.length,
-                itemBuilder: (context, index) {
-                  final order = userOrdersStore[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    color: Theme.of(context).cardColor,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF00A2FF).withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  order.order,
-                                  style: const TextStyle(color: Color(0xFF00A2FF), fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              Row(
-                                children: [
-                                  Text(order.date, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                                  const SizedBox(width: 6),
-                                  const Icon(Icons.calendar_month, color: Color(0xFF00A2FF), size: 18),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            order.serviceName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Status Badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: order.status == 'مكتمل'
-                                  ? Colors.green.withOpacity(0.2)
-                                  : Colors.orange.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: order.status == 'مكتمل' ? Colors.green : Colors.orange,
-                              ),
-                            ),
-                            child: Text(
-                              order.status,
-                              style: TextStyle(
-                                color: order.status == 'مكتمل' ? Colors.green : Colors.orange,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-
-                          // Link Bar
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).scaffoldBackgroundColor,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.link, color: Color(0xFF00A2FF)),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    order.link,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Colors.grey),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-
-                          // Metrics Grid
-                          Row(
-                            children: [
-                              Expanded(child: _buildMetricTile('التكلفة:', order.charge, Icons.sell)),
-                              const SizedBox(width: 10),
-                              Expanded(child: _buildMetricTile('الكمية:', order.remains, Icons.list)),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(child: _buildMetricTile('عدد البدء:', order.startCount, Icons.format_list_numbered)),
-                              const SizedBox(width: 10),
-                              Expanded(child: _buildMetricTile('المتبقي:', order.remains, Icons.timer)),
-                            ],
-                          ),
-                        ],
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: userOrdersStore.length,
+              itemBuilder: (context, index) {
+                final order = userOrdersStore[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    title: Text(order.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('رقم الطلب: ${order.order}'),
+                        Text('الرابط: ${order.link}'),
+                        Text('التاريخ: ${order.date}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        order.status,
+                        style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
                       ),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
-    );
-  }
-
-  Widget _buildMetricTile(String label, String value, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: const Color(0xFF00A2FF)),
-              const SizedBox(width: 4),
-              Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
-          ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-        ],
-      ),
     );
   }
 }
