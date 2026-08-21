@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math' as math;
 
 void main() {
   runApp(const FollowerXApp());
@@ -93,7 +95,7 @@ class ServiceModel {
 
 class OrderModel {
   final String order;
-  final String status;
+  String status;
   final String charge;
   final String startCount;
   final String remains;
@@ -111,6 +113,28 @@ class OrderModel {
     required this.serviceName,
     required this.date,
   });
+
+  Map<String, dynamic> toJson() => {
+        'order': order,
+        'status': status,
+        'charge': charge,
+        'startCount': startCount,
+        'remains': remains,
+        'link': link,
+        'serviceName': serviceName,
+        'date': date,
+      };
+
+  factory OrderModel.fromJson(Map<String, dynamic> json) => OrderModel(
+        order: json['order'] ?? '',
+        status: json['status'] ?? 'قيد الانتظار',
+        charge: json['charge'] ?? '0.00',
+        startCount: json['startCount'] ?? '0',
+        remains: json['remains'] ?? '0',
+        link: json['link'] ?? '',
+        serviceName: json['serviceName'] ?? '',
+        date: json['date'] ?? '',
+      );
 }
 
 // Global Network Helper Function
@@ -149,8 +173,150 @@ Future<List<ServiceModel>> fetchServicesFromApi() async {
   }
 }
 
-// App-wide Store for Local Orders Tracking
+// App-wide Store & Persistence for Local Orders Tracking
 List<OrderModel> userOrdersStore = [];
+
+Future<void> saveOrdersToStorage() async {
+  final prefs = await SharedPreferences.getInstance();
+  final List<String> encoded = userOrdersStore.map((o) => json.encode(o.toJson())).toList();
+  await prefs.setStringList('user_orders_key', encoded);
+}
+
+Future<void> loadOrdersFromStorage() async {
+  final prefs = await SharedPreferences.getInstance();
+  final List<String>? encoded = prefs.getStringList('user_orders_key');
+  if (encoded != null) {
+    userOrdersStore = encoded.map((item) => OrderModel.fromJson(json.decode(item))).toList();
+  }
+}
+
+// Custom Rotating Emoji Settings Button Component
+class RotatingSettingsEmoji extends StatefulWidget {
+  final VoidCallback onTap;
+  const RotatingSettingsEmoji({super.key, required this.onTap});
+
+  @override
+  State<RotatingSettingsEmoji> createState() => _RotatingSettingsEmojiState();
+}
+
+class _RotatingSettingsEmojiState extends State<RotatingSettingsEmoji> with SingleTickerProviderStateMixin {
+  late AnimationController _rotationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _rotationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: RotationTransition(
+        turns: _rotationController,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10),
+          child: Text(
+            '⚙️',
+            style: TextStyle(fontSize: 22),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// RGB Animated Flow Header Container Title
+class RgbAnimatedHeaderTitle extends StatefulWidget {
+  const RgbAnimatedHeaderTitle({super.key});
+
+  @override
+  State<RgbAnimatedHeaderTitle> createState() => _RgbAnimatedHeaderTitleState();
+}
+
+class _RgbAnimatedHeaderTitleState extends State<RgbAnimatedHeaderTitle> with TickerProviderStateMixin {
+  late AnimationController _colorController;
+  late AnimationController _scaleController;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _colorController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
+
+    _scaleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(begin: 0.96, end: 1.04).animate(
+      CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _colorController.dispose();
+    _scaleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _colorController,
+      builder: (context, child) {
+        final value = _colorController.value;
+        final c1 = HSLColor.fromAHSL(1.0, (value * 360) % 360, 0.9, 0.5).toColor();
+        final c2 = HSLColor.fromAHSL(1.0, ((value + 0.33) * 360) % 360, 0.9, 0.5).toColor();
+        final c3 = HSLColor.fromAHSL(1.0, ((value + 0.66) * 360) % 360, 0.9, 0.5).toColor();
+
+        return ScaleTransition(
+          scale: _scaleAnimation,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [c1, c2, c3],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: c1.withOpacity(0.4),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                )
+              ],
+            ),
+            child: const Text(
+              'Follower X - فالوير اكـس',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                shadows: [Shadow(color: Colors.black45, blurRadius: 4)],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 // Base Scaffold Wrapper with Custom AppBar
 class BaseScaffold extends StatelessWidget {
@@ -158,6 +324,7 @@ class BaseScaffold extends StatelessWidget {
   final Widget body;
   final Function(bool) toggleTheme;
   final bool isDark;
+  final bool showAnimatedTitle;
 
   const BaseScaffold({
     super.key,
@@ -165,6 +332,7 @@ class BaseScaffold extends StatelessWidget {
     required this.body,
     required this.toggleTheme,
     required this.isDark,
+    this.showAnimatedTitle = false,
   });
 
   void _showSettingsSheet(BuildContext context) {
@@ -181,7 +349,7 @@ class BaseScaffold extends StatelessWidget {
             return Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize: minAxisSize,
                 children: [
                   Container(
                     width: 40,
@@ -229,18 +397,19 @@ class BaseScaffold extends StatelessWidget {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           centerTitle: true,
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-          ),
+          title: showAnimatedTitle
+              ? const RgbAnimatedHeaderTitle()
+              : Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 22),
             onPressed: () => Navigator.maybePop(context),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.settings, size: 24),
-              onPressed: () => _showSettingsSheet(context),
+            RotatingSettingsEmoji(
+              onTap: () => _showSettingsSheet(context),
             ),
             Builder(
               builder: (ctx) => IconButton(
@@ -279,7 +448,7 @@ class BaseScaffold extends StatelessWidget {
                 onTap: () => Navigator.pop(context),
               ),
               ListTile(
-                leading: const Icon(Icons.settings, color: Color(0xFF00A2FF)),
+                leading: const Text('⚙️', style: TextStyle(fontSize: 20)),
                 title: const Text('الإعدادات'),
                 onTap: () {
                   Navigator.pop(context);
@@ -293,6 +462,8 @@ class BaseScaffold extends StatelessWidget {
       ),
     );
   }
+
+  static get minAxisSize => MainAxisSize.min;
 }
 
 // Multi-color Rotating Loading Spinner
@@ -344,6 +515,153 @@ class _RainbowSpinnerState extends State<RainbowSpinner> with SingleTickerProvid
   }
 }
 
+// Global RGB Top Success Notification Popup Overlay
+void showRgbNotificationOverlay(BuildContext context, String message) {
+  final overlayState = Overlay.of(context);
+  late OverlayEntry overlayEntry;
+
+  overlayEntry = OverlayEntry(
+    builder: (context) {
+      return _RgbNotificationWidget(
+        message: message,
+        onDismiss: () {
+          if (overlayEntry.mounted) {
+            overlayEntry.remove();
+          }
+        },
+      );
+    },
+  );
+
+  overlayState.insert(overlayEntry);
+}
+
+class _RgbNotificationWidget extends StatefulWidget {
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _RgbNotificationWidget({required this.message, required this.onDismiss});
+
+  @override
+  State<_RgbNotificationWidget> createState() => _RgbNotificationWidgetState();
+}
+
+class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with TickerProviderStateMixin {
+  late AnimationController _rgbController;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _rgbController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.8),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOutBack));
+
+    _fadeController.forward();
+
+    Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        _fadeController.reverse().then((_) {
+          widget.onDismiss();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _rgbController.dispose();
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: AnimatedBuilder(
+                animation: _rgbController,
+                builder: (context, child) {
+                  final val = _rgbController.value;
+                  final color1 = HSLColor.fromAHSL(1.0, (val * 360) % 360, 0.85, 0.5).toColor();
+                  final color2 = HSLColor.fromAHSL(1.0, ((val + 0.5) * 360) % 360, 0.85, 0.5).toColor();
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        gradient: LinearGradient(
+                          colors: [color1, color2],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color1.withOpacity(0.5),
+                            blurRadius: 12,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.check, color: Colors.green, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(
+                              widget.message,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // 1. Splash Screen
 class SplashScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -371,6 +689,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    loadOrdersFromStorage();
     _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       setState(() {
         _currentIconIndex = (_currentIconIndex + 1) % _socialIcons.length;
@@ -444,8 +763,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   String? _errorMessage;
 
-  void _handleLogin() {
+  void _handleLogin() async {
     if (_usernameController.text == 'admin' && _passwordController.text == 'admin') {
+      await loadOrdersFromStorage();
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => HomeScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
@@ -602,6 +923,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return BaseScaffold(
       title: 'Follower X',
+      showAnimatedTitle: true,
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: SingleChildScrollView(
@@ -639,7 +961,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             isDark: widget.isDark,
                           ),
                         ),
-                      );
+                      ).then((_) => setState(() {}));
                     },
                   ),
                 ),
@@ -657,7 +979,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             isDark: widget.isDark,
                           ),
                         ),
-                      );
+                      ).then((_) => setState(() {}));
                     },
                   ),
                 ),
@@ -718,7 +1040,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               service: s,
                             ),
                           ),
-                        );
+                        ).then((_) => setState(() {}));
                       },
                     ),
                   );
@@ -865,7 +1187,7 @@ class _HomeScreenState extends State<HomeScreen> {
               platformKey: platform['key'] as String,
             ),
           ),
-        );
+        ).then((_) => setState(() {}));
       },
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -927,50 +1249,42 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
     _fetchServices();
   }
 
+  bool _isServiceForPlatform(ServiceModel s, String pKey) {
+    final cat = s.category.toLowerCase();
+    final name = s.name.toLowerCase();
+
+    switch (pKey) {
+      case 'instagram':
+        if (cat.contains('facebook') || cat.contains('tiktok') || cat.contains('telegram') || cat.contains('twitter') || cat.contains('youtube') || cat.contains('فيسبوك')) return false;
+        return cat.contains('instagram') || name.contains('instagram') || cat.contains('انستجرام') || name.contains('انستغرام') || cat.contains('انستغرام');
+      case 'facebook':
+        if (cat.contains('instagram') || cat.contains('tiktok') || cat.contains('telegram') || cat.contains('twitter')) return false;
+        return cat.contains('facebook') || name.contains('facebook') || cat.contains('فيسبوك') || name.contains('فيس بوك');
+      case 'tiktok':
+        if (cat.contains('instagram') || cat.contains('facebook') || cat.contains('telegram')) return false;
+        return cat.contains('tiktok') || name.contains('tiktok') || cat.contains('تيكتوك') || name.contains('تيك توك');
+      case 'telegram':
+        if (cat.contains('instagram') || cat.contains('facebook') || cat.contains('tiktok')) return false;
+        return cat.contains('telegram') || name.contains('telegram') || cat.contains('تليكرام') || name.contains('تليجرام') || cat.contains('تلغ');
+      case 'twitter':
+        if (cat.contains('instagram') || cat.contains('facebook')) return false;
+        return cat.contains('twitter') || name.contains('twitter') || cat.contains('تويتر') || name.contains('تويتر');
+      case 'whatsapp':
+        return cat.contains('whatsapp') || name.contains('whatsapp') || cat.contains('واتساب') || name.contains('وتساب');
+      case 'spotify':
+        return cat.contains('spotify') || name.contains('spotify') || cat.contains('سبوت') || name.contains('سبوت');
+      case 'threads':
+        return cat.contains('threads') || name.contains('threads') || cat.contains('ثريدز') || name.contains('ثريد');
+      default:
+        return cat.contains(pKey) || name.contains(pKey);
+    }
+  }
+
   Future<void> _fetchServices() async {
     try {
       final all = await fetchServicesFromApi();
       setState(() {
-        services = all.where((s) {
-          final cat = s.category.toLowerCase();
-          final name = s.name.toLowerCase();
-          final key = widget.platformKey.toLowerCase();
-
-          switch (key) {
-            case 'instagram':
-              return cat.contains('instagram') || name.contains('instagram') ||
-                  cat.contains('انستجرام') || name.contains('انستغرام');
-            case 'facebook':
-              return cat.contains('facebook') || name.contains('facebook') ||
-                  cat.contains('فيسبوك') || name.contains('فيس بوك');
-            case 'tiktok':
-              return cat.contains('tiktok') || name.contains('tiktok') ||
-                  cat.contains('تيكتوك') || name.contains('تيك توك');
-            case 'telegram':
-              return cat.contains('telegram') || name.contains('telegram') ||
-                  cat.contains('تليكرام') || name.contains('تليجرام') || cat.contains('تلغ');
-            case 'twitter':
-              return cat.contains('twitter') || name.contains('twitter') ||
-                  cat.contains('تويتر x') || name.contains('X تويتر') || cat.contains(' x ') || name.contains(' x ');
-            case 'whatsapp':
-              return cat.contains('whatsapp') || name.contains('whatsapp') ||
-                  cat.contains('واتساب') || name.contains('وتساب');
-            case 'spotify':
-              return cat.contains('spotify') || name.contains('spotify') ||
-                  cat.contains('سبوت') || name.contains('سبوت');
-            case 'threads':
-              return cat.contains('threads') || name.contains('threads') ||
-                  cat.contains('ثريدز') || name.contains('ثريد');
-            default:
-              return cat.contains(key) || name.contains(key);
-          }
-        }).toList();
-
-        // إذا كانت الفلترة فارغة يعرض كل الخدمات لضمان عرض المحتوى دائماً
-        if (services.isEmpty) {
-          services = all;
-        }
-
+        services = all.where((s) => _isServiceForPlatform(s, widget.platformKey.toLowerCase())).toList();
         isLoading = false;
       });
     } catch (e) {
@@ -1098,7 +1412,6 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
               cat.contains('مجانية');
         }).toList();
 
-        // في حال عدم وجود خدمات سعرها 0 يتم عرض أرخص الخدمات المتاحة
         if (freeServicesList.isEmpty) {
           freeServicesList = all..sort((a, b) => (double.tryParse(a.rate) ?? 0).compareTo(double.tryParse(b.rate) ?? 0));
         }
@@ -1191,14 +1504,47 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   final _quantityController = TextEditingController();
   bool isSubmitting = false;
 
-  Future<void> _submitOrder() async {
-    final link = _linkController.text.trim();
-    final quantity = _quantityController.text.trim();
+  bool isLinkInvalid = false;
+  bool isQuantityInvalid = false;
+  String? validationErrorMsg;
 
-    if (link.isEmpty || quantity.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى ملء جميع الحقول المطلوبة')),
-      );
+  Future<void> _submitOrder() async {
+    setState(() {
+      isLinkInvalid = false;
+      isQuantityInvalid = false;
+      validationErrorMsg = null;
+    });
+
+    final link = _linkController.text.trim();
+    final quantityStr = _quantityController.text.trim();
+    final minVal = int.tryParse(widget.service.min) ?? 0;
+    final maxVal = int.tryParse(widget.service.max) ?? 9999999;
+    final parsedQty = int.tryParse(quantityStr);
+
+    bool hasError = false;
+
+    if (link.isEmpty) {
+      isLinkInvalid = true;
+      hasError = true;
+    }
+
+    if (quantityStr.isEmpty) {
+      isQuantityInvalid = true;
+      hasError = true;
+    }
+
+    if (hasError) {
+      setState(() {
+        validationErrorMsg = 'مطلوب ملء الحقول المطلوبة';
+      });
+      return;
+    }
+
+    if (parsedQty == null || parsedQty < minVal || parsedQty > maxVal) {
+      setState(() {
+        isQuantityInvalid = true;
+        validationErrorMsg = 'طلبك اقل أو اعلى من الكمية المحددة';
+      });
       return;
     }
 
@@ -1212,30 +1558,29 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           'action': 'add',
           'service': widget.service.service,
           'link': link,
-          'quantity': quantity,
+          'quantity': quantityStr,
         },
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['order'] != null) {
-          userOrdersStore.add(
-            OrderModel(
-              order: data['order'].toString(),
-              status: 'Pending',
-              charge: '0.00',
-              startCount: '0',
-              remains: quantity,
-              link: link,
-              serviceName: widget.service.name,
-              date: DateTime.now().toString().split('.')[0],
-            ),
+          final newOrder = OrderModel(
+            order: data['order'].toString(),
+            status: 'قيد الانتظار',
+            charge: '0.00',
+            startCount: '0',
+            remains: quantityStr,
+            link: link,
+            serviceName: widget.service.name,
+            date: DateTime.now().toString().split('.')[0],
           );
 
+          userOrdersStore.insert(0, newOrder);
+          await saveOrdersToStorage();
+
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('تم إرسال الطلب بنجاح! رقم الطلب: ${data['order']}')),
-          );
+          showRgbNotificationOverlay(context, 'تم ارسال طلبك الان بنجاح .');
           Navigator.pop(context);
         } else {
           final err = data['error'] ?? 'حدث خطأ أثناء تنفيذ الطلب';
@@ -1283,8 +1628,15 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                 labelText: 'رابط الحساب / المنشور',
                 prefixIcon: const Icon(Icons.link, color: Color(0xFF00A2FF)),
                 filled: true,
-                fillColor: Theme.of(context).cardColor,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                fillColor: isLinkInvalid ? Colors.red.withOpacity(0.15) : Theme.of(context).cardColor,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: isLinkInvalid ? const BorderSide(color: Colors.red, width: 2) : BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: isLinkInvalid ? const BorderSide(color: Colors.red, width: 2) : const BorderSide(color: Color(0xFF00A2FF), width: 2),
+                ),
               ),
             ),
             const SizedBox(height: 15),
@@ -1295,10 +1647,26 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                 labelText: 'الكمية',
                 prefixIcon: const Icon(Icons.numbers, color: Color(0xFF00A2FF)),
                 filled: true,
-                fillColor: Theme.of(context).cardColor,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                fillColor: isQuantityInvalid ? Colors.red.withOpacity(0.15) : Theme.of(context).cardColor,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: isQuantityInvalid ? const BorderSide(color: Colors.red, width: 2) : BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: isQuantityInvalid ? const BorderSide(color: Colors.red, width: 2) : const BorderSide(color: Color(0xFF00A2FF), width: 2),
+                ),
               ),
             ),
+            if (validationErrorMsg != null) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  validationErrorMsg!,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
             const SizedBox(height: 25),
             SizedBox(
               width: double.infinity,
@@ -1322,52 +1690,125 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
 }
 
 // 7. Order History Screen
-class OrderHistoryScreen extends StatelessWidget {
+class OrderHistoryScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
 
   const OrderHistoryScreen({super.key, required this.toggleTheme, required this.isDark});
 
   @override
+  State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
+}
+
+class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
+  bool isRefreshing = false;
+
+  String _translateStatus(String status) {
+    final lower = status.toLowerCase();
+    if (lower.contains('pending')) return 'قيد الانتظار';
+    if (lower.contains('processing') || lower.contains('in progress')) return 'قيد التنفيذ';
+    if (lower.contains('completed')) return 'مكتمل';
+    if (lower.contains('partial')) return 'مكتمل جزئياً';
+    if (lower.contains('canceled') || lower.contains('cancelled')) return 'ملغى';
+    return status;
+  }
+
+  Color _getStatusColor(String status) {
+    final translated = _translateStatus(status);
+    if (translated == 'قيد الانتظار') return Colors.orange;
+    if (translated == 'قيد التنفيذ') return Colors.blue;
+    if (translated == 'مكتمل') return Colors.green;
+    if (translated == 'ملغى') return Colors.red;
+    return Colors.purple;
+  }
+
+  Future<void> _refreshOrders() async {
+    setState(() => isRefreshing = true);
+
+    try {
+      for (var order in userOrdersStore) {
+        final res = await http.post(
+          Uri.parse(apiUrl),
+          body: {
+            'key': apiKey,
+            'action': 'status',
+            'order': order.order,
+          },
+        );
+
+        if (res.statusCode == 200) {
+          final data = json.decode(res.body);
+          if (data['status'] != null) {
+            order.status = data['status'].toString();
+          }
+        }
+      }
+      await saveOrdersToStorage();
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() => isRefreshing = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return BaseScaffold(
       title: 'سجل الطلبات',
-      toggleTheme: toggleTheme,
-      isDark: isDark,
-      body: userOrdersStore.isEmpty
-          ? const Center(child: Text('لا توجد طلبات سابقة'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: userOrdersStore.length,
-              itemBuilder: (context, index) {
-                final order = userOrdersStore[index];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    title: Text(order.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('رقم الطلب: ${order.order}'),
-                        Text('الرابط: ${order.link}'),
-                        Text('التاريخ: ${order.date}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                      ],
-                    ),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: RefreshIndicator(
+        onRefresh: _refreshOrders,
+        color: const Color(0xFF00A2FF),
+        child: userOrdersStore.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 200),
+                  Center(child: Text('لا توجد طلبات سابقة')),
+                ],
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: userOrdersStore.length,
+                itemBuilder: (context, index) {
+                  final order = userOrdersStore[index];
+                  final statusTxt = _translateStatus(order.status);
+                  final statusCol = _getStatusColor(order.status);
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    child: ListTile(
+                      title: Text(order.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text('رقم الطلب: ${order.order}'),
+                          Text('الرابط: ${order.link}'),
+                          Text('التاريخ: ${order.date}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                        ],
                       ),
-                      child: Text(
-                        order.status,
-                        style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: statusCol.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: statusCol.withOpacity(0.4)),
+                        ),
+                        child: Text(
+                          statusTxt,
+                          style: TextStyle(color: statusCol, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }
