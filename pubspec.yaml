@@ -1,42 +1,31 @@
-name: Build APK Automatically
+name: follower_x
+description: "Follower X - تطبيق خدمات التواصل الاجتماعي"
+publish_to: 'none'
 
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+version: 1.0.0+1
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+environment:
+  sdk: '>=3.0.0 <4.0.0'
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+dependencies:
+  flutter:
+    sdk: flutter
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
+  # المكتبات الأساسية المستخدمة في الكود
+  http: ^1.2.0
+  shared_preferences: ^2.2.2
 
-      - name: Rebuild Android Directory & Inject Dependencies
-        run: |
-          rm -rf android
-          flutter create . --platforms=android --org com.followerx.app
-          flutter pub add shared_preferences http
+  # الأيقونات الأساسية
+  cupertino_icons: ^1.0.8
 
-      - name: Fetch and Install Dependencies
-        run: flutter pub get
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
 
-      - name: Build Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+flutter:
+  uses-material-design: true
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+  # في حال أردت إضافة صور أو خطوط مستقبلاً يمكنك إلغاء تعليق الأسطر التالية:
+  # assets:
+  #   - assets/images/
