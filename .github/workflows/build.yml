@@ -23,7 +23,7 @@ jobs:
         with:
           channel: 'stable'
 
-      # إنشاء ملف pubspec.yaml تلقائياً بجميع المكتبات لتجنب خطأ Unresolved package
+      # إنشاء ملف pubspec.yaml بالمكتبات المطلوبة
       - name: Create pubspec.yaml automatically
         run: |
           cat <<'EOF' > pubspec.yaml
@@ -50,6 +50,13 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
+
+      # إعادة إنشاء مجلد Android المفقود تلقائياً بدون مسح pubspec.yaml
+      - name: Recreate Android Project Files if Missing
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create . --platforms=android --org=com.example
+          fi
 
       - name: Install Dependencies
         run: flutter pub get
