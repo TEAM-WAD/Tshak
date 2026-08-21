@@ -1,6 +1,6 @@
 name: Build APK Automatically
 
-on:
+on
   push:
     branches: [ main, master ]
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -23,12 +23,13 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Delete Old Android Folder & Recreate Clean Project
+      - name: Rebuild Android Config & Add Packages
         run: |
           rm -rf android
           flutter create . --platforms=android --org com.followerx.app
+          flutter pub add http shared_preferences
 
-      - name: Fetch and Install Dependencies
+      - name: Fetch Dependencies
         run: flutter pub get
 
       - name: Build Release APK
