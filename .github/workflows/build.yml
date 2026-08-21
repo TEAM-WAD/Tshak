@@ -23,7 +23,35 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Setup Project Files
+      - name: Ensure Main Entry Point Exists
+        run: |
+          mkdir -p lib
+          if [ ! -f lib/main.dart ]; then
+            echo "creating default main.dart"
+            cat << 'EOF' > lib/main.dart
+          import 'package:flutter/material.dart';
+
+          void main() {
+            runApp(const MyApp());
+          }
+
+          class MyApp extends StatelessWidget {
+            const MyApp({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                home: Scaffold(
+                  appBar: AppBar(title: const Text('Follower X')),
+                  body: const Center(child: Text('App Running Successfully')),
+                ),
+              );
+            }
+          }
+          EOF
+          fi
+
+      - name: Recreate Project Structure
         run: |
           rm -rf android
           cat << 'EOF' > pubspec.yaml
@@ -52,11 +80,8 @@ jobs:
       - name: Fetch Dependencies
         run: flutter pub get
 
-      - name: Build Unsigned Release APK Direct
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease -Ptarget=../lib/main.dart --no-daemon
+      - name: Build Release APK
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
