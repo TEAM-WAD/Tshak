@@ -166,6 +166,7 @@ class BaseScaffold extends StatelessWidget {
                         value: isDark,
                         activeColor: const Color(0xFF00A2FF),
                         onChanged: (val) {
+                          setModalState(() {});
                           toggleTheme(val);
                           Navigator.pop(ctx);
                         },
@@ -601,7 +602,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _buildActionButton(
                     icon: Icons.card_giftcard,
                     title: 'خدمات مجانية',
-                    onTap: () {
+                    onTap: () async {
+                      if (allServices.isEmpty) {
+                        await _fetchAllServices();
+                      }
+                      if (!mounted) return;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -916,7 +921,50 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
             final cat = s.category.toLowerCase();
             final name = s.name.toLowerCase();
             final key = widget.platformKey.toLowerCase();
-            return cat.contains(key) || name.contains(key);
+
+            bool matchesPlatform() {
+              switch (key) {
+                case 'instagram':
+                  return cat.contains('instagram') || name.contains('instagram') ||
+                      cat.contains('انستغرام') || name.contains('انستغرام') ||
+                      cat.contains('انستكرام') || name.contains('انستكرام') ||
+                      cat.contains('انستقرام') || name.contains('انستقرام') ||
+                      cat.contains('انستا') || name.contains('انستا');
+                case 'facebook':
+                  return cat.contains('facebook') || name.contains('facebook') ||
+                      cat.contains('فيسبوك') || name.contains('فيسبوك') ||
+                      cat.contains('فيس بوك') || name.contains('فيس بوك') ||
+                      cat.contains('فيس') || name.contains('فيس');
+                case 'tiktok':
+                  return cat.contains('tiktok') || name.contains('tiktok') ||
+                      cat.contains('تيك توك') || name.contains('تيك توك') ||
+                      cat.contains('تيكتوك') || name.contains('تيكتوك');
+                case 'telegram':
+                  return cat.contains('telegram') || name.contains('telegram') ||
+                      cat.contains('تليجرام') || name.contains('تليجرام') ||
+                      cat.contains('تليكرام') || name.contains('تليكرام') ||
+                      cat.contains('تلغرام') || name.contains('تلغرام') ||
+                      cat.contains('تلي') || name.contains('تلي');
+                case 'twitter':
+                  return cat.contains('twitter') || name.contains('twitter') ||
+                      cat.contains('تويتر') || name.contains('تويتر') ||
+                      cat.contains('x') || name.contains('x');
+                case 'whatsapp':
+                  return cat.contains('whatsapp') || name.contains('whatsapp') ||
+                      cat.contains('واتساب') || name.contains('واتساب') ||
+                      cat.contains('واتس') || name.contains('واتس');
+                case 'spotify':
+                  return cat.contains('spotify') || name.contains('spotify') ||
+                      cat.contains('سبوتفاي') || name.contains('سبوتفاي');
+                case 'threads':
+                  return cat.contains('threads') || name.contains('threads') ||
+                      cat.contains('ثريدز') || name.contains('ثريدز');
+                default:
+                  return cat.contains(key) || name.contains(key);
+              }
+            }
+
+            return matchesPlatform();
           }).toList();
           isLoading = false;
         });
@@ -989,7 +1037,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
 }
 
 // 5. Free Services Screen
-class FreeServicesScreen extends StatelessWidget {
+class FreeServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
   final List<ServiceModel> allServices;
@@ -1002,45 +1050,99 @@ class FreeServicesScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final freeServices = allServices.where((s) => s.rate == '0' || s.rate == '0.00' || s.name.contains('مجاني')).toList();
+  State<FreeServicesScreen> createState() => _FreeServicesScreenState();
+}
 
+class _FreeServicesScreenState extends State<FreeServicesScreen> {
+  List<ServiceModel> freeServicesList = [];
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.allServices.isEmpty) {
+      _fetchFreeServicesDirectly();
+    } else {
+      _filterServices(widget.allServices);
+    }
+  }
+
+  void _filterServices(List<ServiceModel> list) {
+    setState(() {
+      freeServicesList = list.where((s) {
+        final rateNum = double.tryParse(s.rate) ?? 0.0;
+        final name = s.name.toLowerCase();
+        final cat = s.category.toLowerCase();
+
+        return rateNum == 0.0 ||
+            s.rate == '0' ||
+            s.rate == '0.00' ||
+            name.contains('مجاني') ||
+            name.contains('مجانية') ||
+            name.contains('free') ||
+            cat.contains('مجاني') ||
+            cat.contains('مجانية') ||
+            cat.contains('free');
+      }).toList();
+    });
+  }
+
+  Future<void> _fetchFreeServicesDirectly() async {
+    setState(() => isLoading = true);
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        body: {'key': apiKey, 'action': 'services'},
+      );
+      if (response.statusCode == 200) {
+        final List list = json.decode(response.body);
+        final parsed = list.map((item) => ServiceModel.fromJson(item)).toList();
+        _filterServices(parsed);
+      }
+    } catch (_) {}
+    setState(() => isLoading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return BaseScaffold(
       title: 'الخدمات المجانية',
-      toggleTheme: toggleTheme,
-      isDark: isDark,
-      body: freeServices.isEmpty
-          ? const Center(child: Text('لا توجد خدمات مجانية متاحة حالياً'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: freeServices.length,
-              itemBuilder: (context, index) {
-                final item = freeServices[index];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('ID: ${item.service}'),
-                    trailing: ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => OrderFormScreen(
-                              toggleTheme: toggleTheme,
-                              isDark: isDark,
-                              service: item,
-                            ),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
-                      child: const Text('طلب', style: TextStyle(color: Colors.white)),
-                    ),
-                  ),
-                );
-              },
-            ),
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: isLoading
+          ? const Center(child: RainbowSpinner())
+          : freeServicesList.isEmpty
+              ? const Center(child: Text('لا توجد خدمات مجانية متاحة حالياً'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: freeServicesList.length,
+                  itemBuilder: (context, index) {
+                    final item = freeServicesList[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('ID: ${item.service} | السعر: \$${item.rate}'),
+                        trailing: ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => OrderFormScreen(
+                                  toggleTheme: widget.toggleTheme,
+                                  isDark: widget.isDark,
+                                  service: item,
+                                ),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+                          child: const Text('طلب', style: TextStyle(color: Colors.white)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
