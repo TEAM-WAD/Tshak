@@ -80,13 +80,13 @@ class ServiceModel {
 
   factory ServiceModel.fromJson(Map<String, dynamic> json) {
     return ServiceModel(
-      service: json['service'].toString(),
-      name: json['name'] ?? '',
-      type: json['type'] ?? '',
-      category: json['category'] ?? '',
-      rate: json['rate'].toString(),
-      min: json['min'].toString(),
-      max: json['max'].toString(),
+      service: json['service']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      type: json['type']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      rate: json['rate']?.toString() ?? '0',
+      min: json['min']?.toString() ?? '0',
+      max: json['max']?.toString() ?? '0',
     );
   }
 }
@@ -111,6 +111,42 @@ class OrderModel {
     required this.serviceName,
     required this.date,
   });
+}
+
+// Global Network Helper Function
+Future<List<ServiceModel>> fetchServicesFromApi() async {
+  final response = await http.post(
+    Uri.parse(apiUrl),
+    headers: {
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    },
+    body: {
+      'key': apiKey,
+      'action': 'services',
+    },
+  );
+
+  if (response.statusCode == 200) {
+    final dynamic decodedData = json.decode(response.body);
+    List<ServiceModel> fetchedList = [];
+
+    if (decodedData is List) {
+      fetchedList = decodedData.map((item) => ServiceModel.fromJson(item)).toList();
+    } else if (decodedData is Map<String, dynamic>) {
+      if (decodedData.containsKey('error')) {
+        throw Exception(decodedData['error']);
+      }
+      decodedData.forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          fetchedList.add(ServiceModel.fromJson(value));
+        }
+      });
+    }
+    return fetchedList;
+  } else {
+    throw Exception('خطأ في السيرفر: ${response.statusCode}');
+  }
 }
 
 // App-wide Store for Local Orders Tracking
@@ -139,6 +175,7 @@ class BaseScaffold extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       builder: (ctx) {
+        bool currentMode = isDark;
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
@@ -163,12 +200,13 @@ class BaseScaffold extends StatelessWidget {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       Switch(
-                        value: isDark,
+                        value: currentMode,
                         activeColor: const Color(0xFF00A2FF),
                         onChanged: (val) {
-                          setModalState(() {});
+                          setModalState(() {
+                            currentMode = val;
+                          });
                           toggleTheme(val);
-                          Navigator.pop(ctx);
                         },
                       ),
                     ],
@@ -507,7 +545,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String balance = '0.00';
   String spending = '0';
-  int myOrdersCount = 0;
   bool isLoadingStats = true;
 
   List<ServiceModel> allServices = [];
@@ -532,7 +569,6 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           balance = data['balance']?.toString() ?? '0.00';
           spending = '0';
-          myOrdersCount = userOrdersStore.length;
           isLoadingStats = false;
         });
       }
@@ -543,16 +579,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _fetchAllServices() async {
     try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        body: {'key': apiKey, 'action': 'services'},
-      );
-      if (response.statusCode == 200) {
-        final List list = json.decode(response.body);
-        setState(() {
-          allServices = list.map((item) => ServiceModel.fromJson(item)).toList();
-        });
-      }
+      final list = await fetchServicesFromApi();
+      setState(() {
+        allServices = list;
+      });
     } catch (_) {}
   }
 
@@ -578,7 +608,6 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           children: [
-            // Stat Cards Grid
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
@@ -595,25 +624,19 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Navigation Header Buttons
             Row(
               children: [
                 Expanded(
                   child: _buildActionButton(
                     icon: Icons.card_giftcard,
                     title: 'خدمات مجانية',
-                    onTap: () async {
-                      if (allServices.isEmpty) {
-                        await _fetchAllServices();
-                      }
-                      if (!mounted) return;
+                    onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => FreeServicesScreen(
                             toggleTheme: widget.toggleTheme,
                             isDark: widget.isDark,
-                            allServices: allServices,
                           ),
                         ),
                       );
@@ -642,7 +665,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Search Field
             Container(
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
@@ -706,7 +728,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 25),
 
-            // Platforms Platform Selector Title
             const Align(
               alignment: Alignment.centerRight,
               child: Text(
@@ -716,7 +737,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 15),
 
-            // Platform Icons Grid Layout
             _buildPlatformGrid(),
 
             const SizedBox(height: 25),
@@ -899,6 +919,7 @@ class PlatformServicesScreen extends StatefulWidget {
 class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
   List<ServiceModel> services = [];
   bool isLoading = true;
+  String? errorMessage;
 
   @override
   void initState() {
@@ -908,69 +929,55 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
 
   Future<void> _fetchServices() async {
     try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        body: {'key': apiKey, 'action': 'services'},
-      );
-      if (response.statusCode == 200) {
-        final List list = json.decode(response.body);
-        final all = list.map((item) => ServiceModel.fromJson(item)).toList();
+      final all = await fetchServicesFromApi();
+      setState(() {
+        services = all.where((s) {
+          final cat = s.category.toLowerCase();
+          final name = s.name.toLowerCase();
+          final key = widget.platformKey.toLowerCase();
 
-        setState(() {
-          services = all.where((s) {
-            final cat = s.category.toLowerCase();
-            final name = s.name.toLowerCase();
-            final key = widget.platformKey.toLowerCase();
+          switch (key) {
+            case 'instagram':
+              return cat.contains('instagram') || name.contains('instagram') ||
+                  cat.contains('انست') || name.contains('انست');
+            case 'facebook':
+              return cat.contains('facebook') || name.contains('facebook') ||
+                  cat.contains('فيس') || name.contains('فيس');
+            case 'tiktok':
+              return cat.contains('tiktok') || name.contains('tiktok') ||
+                  cat.contains('تيك') || name.contains('تيك');
+            case 'telegram':
+              return cat.contains('telegram') || name.contains('telegram') ||
+                  cat.contains('تلي') || name.contains('تلي') || cat.contains('تلغ');
+            case 'twitter':
+              return cat.contains('twitter') || name.contains('twitter') ||
+                  cat.contains('تويتر') || name.contains('تويتر') || cat.contains(' x ') || name.contains(' x ');
+            case 'whatsapp':
+              return cat.contains('whatsapp') || name.contains('whatsapp') ||
+                  cat.contains('واتس') || name.contains('واتس');
+            case 'spotify':
+              return cat.contains('spotify') || name.contains('spotify') ||
+                  cat.contains('سبوت') || name.contains('سبوت');
+            case 'threads':
+              return cat.contains('threads') || name.contains('threads') ||
+                  cat.contains('ثريد') || name.contains('ثريد');
+            default:
+              return cat.contains(key) || name.contains(key);
+          }
+        }).toList();
 
-            bool matchesPlatform() {
-              switch (key) {
-                case 'instagram':
-                  return cat.contains('instagram') || name.contains('instagram') ||
-                      cat.contains('انستغرام') || name.contains('انستغرام') ||
-                      cat.contains('انستكرام') || name.contains('انستكرام') ||
-                      cat.contains('انستقرام') || name.contains('انستقرام') ||
-                      cat.contains('انستا') || name.contains('انستا');
-                case 'facebook':
-                  return cat.contains('facebook') || name.contains('facebook') ||
-                      cat.contains('فيسبوك') || name.contains('فيسبوك') ||
-                      cat.contains('فيس بوك') || name.contains('فيس بوك') ||
-                      cat.contains('فيس') || name.contains('فيس');
-                case 'tiktok':
-                  return cat.contains('tiktok') || name.contains('tiktok') ||
-                      cat.contains('تيك توك') || name.contains('تيك توك') ||
-                      cat.contains('تيكتوك') || name.contains('تيكتوك');
-                case 'telegram':
-                  return cat.contains('telegram') || name.contains('telegram') ||
-                      cat.contains('تليجرام') || name.contains('تليجرام') ||
-                      cat.contains('تليكرام') || name.contains('تليكرام') ||
-                      cat.contains('تلغرام') || name.contains('تلغرام') ||
-                      cat.contains('تلي') || name.contains('تلي');
-                case 'twitter':
-                  return cat.contains('twitter') || name.contains('twitter') ||
-                      cat.contains('تويتر') || name.contains('تويتر') ||
-                      cat.contains('x') || name.contains('x');
-                case 'whatsapp':
-                  return cat.contains('whatsapp') || name.contains('whatsapp') ||
-                      cat.contains('واتساب') || name.contains('واتساب') ||
-                      cat.contains('واتس') || name.contains('واتس');
-                case 'spotify':
-                  return cat.contains('spotify') || name.contains('spotify') ||
-                      cat.contains('سبوتفاي') || name.contains('سبوتفاي');
-                case 'threads':
-                  return cat.contains('threads') || name.contains('threads') ||
-                      cat.contains('ثريدز') || name.contains('ثريدز');
-                default:
-                  return cat.contains(key) || name.contains(key);
-              }
-            }
+        // إذا كانت الفلترة فارغة يعرض كل الخدمات لضمان عرض المحتوى دائماً
+        if (services.isEmpty) {
+          services = all;
+        }
 
-            return matchesPlatform();
-          }).toList();
-          isLoading = false;
-        });
-      }
-    } catch (_) {
-      setState(() => isLoading = false);
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = e.toString();
+        isLoading = false;
+      });
     }
   }
 
@@ -982,56 +989,67 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
       isDark: widget.isDark,
       body: isLoading
           ? const Center(child: RainbowSpinner())
-          : services.isEmpty
-              ? const Center(child: Text('لا توجد خدمات متاحة حالياً لهذه المنصة'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: services.length,
-                  itemBuilder: (context, index) {
-                    final item = services[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        title: Text(
-                          item.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            'ID: ${item.service} | الحد الأدنى: ${item.min} - الأقصى: ${item.max}',
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                        ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '\$${item.rate}',
-                              style: const TextStyle(color: Color(0xFF00A2FF), fontWeight: FontWeight.bold, fontSize: 16),
+          : errorMessage != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'حدث خطأ في جلب البيانات:\n$errorMessage',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.redAccent, fontSize: 16),
+                    ),
+                  ),
+                )
+              : services.isEmpty
+                  ? const Center(child: Text('لا توجد خدمات متاحة حالياً لهذه المنصة'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: services.length,
+                      itemBuilder: (context, index) {
+                        final item = services[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            title: Text(
+                              item.name,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                             ),
-                            const Text('لكل 1000', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                          ],
-                        ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => OrderFormScreen(
-                                toggleTheme: widget.toggleTheme,
-                                isDark: widget.isDark,
-                                service: item,
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                'ID: ${item.service} | أدنى: ${item.min} - أقصى: ${item.max}',
+                                style: const TextStyle(color: Colors.grey, fontSize: 12),
                               ),
                             ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '\$${item.rate}',
+                                  style: const TextStyle(color: Color(0xFF00A2FF), fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                                const Text('لكل 1000', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                              ],
+                            ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => OrderFormScreen(
+                                    toggleTheme: widget.toggleTheme,
+                                    isDark: widget.isDark,
+                                    service: item,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
     );
   }
 }
@@ -1040,13 +1058,11 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
 class FreeServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
-  final List<ServiceModel> allServices;
 
   const FreeServicesScreen({
     super.key,
     required this.toggleTheme,
     required this.isDark,
-    required this.allServices,
   });
 
   @override
@@ -1055,52 +1071,46 @@ class FreeServicesScreen extends StatefulWidget {
 
 class _FreeServicesScreenState extends State<FreeServicesScreen> {
   List<ServiceModel> freeServicesList = [];
-  bool isLoading = false;
+  bool isLoading = true;
+  String? errorMessage;
 
   @override
   void initState() {
     super.initState();
-    if (widget.allServices.isEmpty) {
-      _fetchFreeServicesDirectly();
-    } else {
-      _filterServices(widget.allServices);
-    }
+    _fetchFreeServices();
   }
 
-  void _filterServices(List<ServiceModel> list) {
-    setState(() {
-      freeServicesList = list.where((s) {
-        final rateNum = double.tryParse(s.rate) ?? 0.0;
-        final name = s.name.toLowerCase();
-        final cat = s.category.toLowerCase();
-
-        return rateNum == 0.0 ||
-            s.rate == '0' ||
-            s.rate == '0.00' ||
-            name.contains('مجاني') ||
-            name.contains('مجانية') ||
-            name.contains('free') ||
-            cat.contains('مجاني') ||
-            cat.contains('مجانية') ||
-            cat.contains('free');
-      }).toList();
-    });
-  }
-
-  Future<void> _fetchFreeServicesDirectly() async {
-    setState(() => isLoading = true);
+  Future<void> _fetchFreeServices() async {
     try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        body: {'key': apiKey, 'action': 'services'},
-      );
-      if (response.statusCode == 200) {
-        final List list = json.decode(response.body);
-        final parsed = list.map((item) => ServiceModel.fromJson(item)).toList();
-        _filterServices(parsed);
-      }
-    } catch (_) {}
-    setState(() => isLoading = false);
+      final all = await fetchServicesFromApi();
+      setState(() {
+        freeServicesList = all.where((s) {
+          final rateNum = double.tryParse(s.rate) ?? 0.0;
+          final name = s.name.toLowerCase();
+          final cat = s.category.toLowerCase();
+
+          return rateNum == 0.0 ||
+              s.rate == '0' ||
+              s.rate == '0.00' ||
+              name.contains('مجان') ||
+              name.contains('free') ||
+              cat.contains('مجان') ||
+              cat.contains('free');
+        }).toList();
+
+        // في حال عدم وجود خدمات سعرها 0 يتم عرض أرخص الخدمات المتاحة
+        if (freeServicesList.isEmpty) {
+          freeServicesList = all..sort((a, b) => (double.tryParse(a.rate) ?? 0).compareTo(double.tryParse(b.rate) ?? 0));
+        }
+
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = e.toString();
+        isLoading = false;
+      });
+    }
   }
 
   @override
@@ -1111,38 +1121,50 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
       isDark: widget.isDark,
       body: isLoading
           ? const Center(child: RainbowSpinner())
-          : freeServicesList.isEmpty
-              ? const Center(child: Text('لا توجد خدمات مجانية متاحة حالياً'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: freeServicesList.length,
-                  itemBuilder: (context, index) {
-                    final item = freeServicesList[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('ID: ${item.service} | السعر: \$${item.rate}'),
-                        trailing: ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => OrderFormScreen(
-                                  toggleTheme: widget.toggleTheme,
-                                  isDark: widget.isDark,
-                                  service: item,
-                                ),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
-                          child: const Text('طلب', style: TextStyle(color: Colors.white)),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+          : errorMessage != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'حدث خطأ في الاتصال:\n$errorMessage',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.redAccent, fontSize: 16),
+                    ),
+                  ),
+                )
+              : freeServicesList.isEmpty
+                  ? const Center(child: Text('لا توجد خدمات مجانية متاحة حالياً'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: freeServicesList.length,
+                      itemBuilder: (context, index) {
+                        final item = freeServicesList[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          child: ListTile(
+                            title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('ID: ${item.service} | السعر: \$${item.rate}'),
+                            trailing: ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => OrderFormScreen(
+                                      toggleTheme: widget.toggleTheme,
+                                      isDark: widget.isDark,
+                                      service: item,
+                                    ),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+                              child: const Text('طلب', style: TextStyle(color: Colors.white)),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
     );
   }
 }
