@@ -23,7 +23,7 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Recreate Android Project & Pubspec
+      - name: Generate Pubspec & Create Android
         run: |
           rm -rf android
           cat << 'EOF' > pubspec.yaml
@@ -52,8 +52,8 @@ jobs:
       - name: Fetch Dependencies
         run: flutter pub get
 
-      - name: Build Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+      - name: Build Release APK Detailed
+        run: flutter build apk --release --no-tree-shake-icons --verbose
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
