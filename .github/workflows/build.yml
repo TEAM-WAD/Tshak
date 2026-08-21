@@ -29,16 +29,17 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.24.5'
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install flet
+          pip install -r requirements.txt || true
 
       - name: Build APK with Flet
         run: |
-          flet build apk --verbose
+          yes | flet build apk --verbose
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
