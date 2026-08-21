@@ -1139,15 +1139,17 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Card(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.service.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text('السعر لكل 1000: \$${widget.service.rate}', style: const TextStyle(color: Color(0xFF00A2FF))),
-                  Text('الحد الأدنى: ${widget.service.min} | الحد الأقصى: ${widget.service.max}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.service.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text('السعر لكل 1000: \$${widget.service.rate}', style: const TextStyle(color: Color(0xFF00A2FF))),
+                    Text('الحد الأدنى: ${widget.service.min} | الحد الأقصى: ${widget.service.max}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 20),
