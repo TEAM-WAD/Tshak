@@ -23,12 +23,12 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Delete Old Android Folder & Recreate Clean Project
+      - name: Create Android Platform Only
         run: |
           rm -rf android
-          flutter create . --platforms=android --org com.followerx.app --project-name tshak
+          flutter create . --platforms=android --project-name tshak --offline || true
 
-      - name: Fetch and Install Dependencies
+      - name: Fetch Dependencies
         run: flutter pub get
 
       - name: Build Release APK
