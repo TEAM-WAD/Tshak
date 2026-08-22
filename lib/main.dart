@@ -1329,42 +1329,42 @@ class _HomeScreenState extends State<HomeScreen> {
     final platforms = [
       {
         'name': 'انستكرام',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/512px-Instagram_logo_2016.svg.png',
+        'iconUrl': 'https://img.icons8.com/color/144/instagram-new.png',
         'key': 'instagram',
       },
       {
         'name': 'تيك توك',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/TikTok_logo.svg/512px-TikTok_logo.svg.png',
+        'iconUrl': 'https://img.icons8.com/color/144/tiktok.png',
         'key': 'tiktok',
       },
       {
         'name': 'فيسبوك',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/512px-Facebook_Logo_%282019%29.png',
+        'iconUrl': 'https://img.icons8.com/color/144/facebook-new.png',
         'key': 'facebook',
       },
       {
         'name': 'تويتر',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/X_logo_2023.svg/512px-X_logo_2023.svg.png',
+        'iconUrl': 'https://img.icons8.com/color/144/twitterx.png',
         'key': 'twitter',
       },
       {
         'name': 'سبوتفاي',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/512px-Spotify_logo_without_text.svg.png',
+        'iconUrl': 'https://img.icons8.com/color/144/spotify.png',
         'key': 'spotify',
       },
       {
         'name': 'تليكرام',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Telegram_logo.svg/512px-Telegram_logo.svg.png',
+        'iconUrl': 'https://img.icons8.com/color/144/telegram-app.png',
         'key': 'telegram',
       },
       {
         'name': 'واتساب',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/512px-WhatsApp.svg.png',
+        'iconUrl': 'https://img.icons8.com/color/144/whatsapp.png',
         'key': 'whatsapp',
       },
       {
         'name': 'ثريدز',
-        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Threads_%28app%29_logo.svg/512px-Threads_%28app%29_logo.svg.png',
+        'iconUrl': 'https://img.icons8.com/color/144/threads.png',
         'key': 'threads',
       },
     ];
