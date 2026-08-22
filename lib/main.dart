@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await loadDiscountFromStorage();
+  await loadUpdateInfoFromStorage();
+  await loadNotificationsFromStorage();
   runApp(const FollowerXApp());
 }
 
@@ -61,6 +66,97 @@ class _FollowerXAppState extends State<FollowerXApp> {
 const String apiUrl = 'https://ylafollow.com/api/v2';
 const String apiKey = '2ff0c9c3dbf8db742196dd1d4215bbe2';
 
+// Global State Variables & Helpers
+double globalDiscount = 0.0;
+bool hasNewUpdateBadge = false;
+String globalUpdateMsg = '';
+String globalUpdateUrl = '';
+
+class AppNotification {
+  final String title;
+  final String body;
+  final DateTime timestamp;
+  bool isRead;
+
+  AppNotification({
+    required this.title,
+    required this.body,
+    required this.timestamp,
+    this.isRead = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'body': body,
+        'timestamp': timestamp.toIso8601String(),
+        'isRead': isRead,
+      };
+
+  factory AppNotification.fromJson(Map<String, dynamic> json) => AppNotification(
+        title: json['title'] ?? '',
+        body: json['body'] ?? '',
+        timestamp: json['timestamp'] != null ? DateTime.parse(json['timestamp']) : DateTime.now(),
+        isRead: json['isRead'] ?? false,
+      );
+}
+
+List<AppNotification> appNotificationsList = [];
+
+Future<void> saveDiscountToStorage(double val) async {
+  globalDiscount = val;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setDouble('global_discount_val', val);
+}
+
+Future<void> loadDiscountFromStorage() async {
+  final prefs = await SharedPreferences.getInstance();
+  globalDiscount = prefs.getDouble('global_discount_val') ?? 0.0;
+}
+
+Future<void> saveUpdateInfoToStorage(String msg, String url, bool badge) async {
+  globalUpdateMsg = msg;
+  globalUpdateUrl = url;
+  hasNewUpdateBadge = badge;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('update_msg', msg);
+  await prefs.setString('update_url', url);
+  await prefs.setBool('has_new_update', badge);
+}
+
+Future<void> loadUpdateInfoFromStorage() async {
+  final prefs = await SharedPreferences.getInstance();
+  globalUpdateMsg = prefs.getString('update_msg') ?? '';
+  globalUpdateUrl = prefs.getString('update_url') ?? '';
+  hasNewUpdateBadge = prefs.getBool('has_new_update') ?? false;
+}
+
+Future<void> saveNotificationsToStorage() async {
+  final prefs = await SharedPreferences.getInstance();
+  final List<String> encoded = appNotificationsList.map((n) => json.encode(n.toJson())).toList();
+  await prefs.setStringList('app_notifications_key', encoded);
+}
+
+Future<void> loadNotificationsFromStorage() async {
+  final prefs = await SharedPreferences.getInstance();
+  final List<String>? encoded = prefs.getStringList('app_notifications_key');
+  if (encoded != null) {
+    appNotificationsList = encoded.map((item) => AppNotification.fromJson(json.decode(item))).toList();
+  }
+}
+
+void addAppNotification(String title, String body, BuildContext? context) {
+  final newNotif = AppNotification(
+    title: title,
+    body: body,
+    timestamp: DateTime.now(),
+  );
+  appNotificationsList.insert(0, newNotif);
+  saveNotificationsToStorage();
+  if (context != null) {
+    showRgbNotificationOverlay(context, '$title\n$body');
+  }
+}
+
 // User Account Model & Persistence Helpers
 class UserAccountModel {
   final String username;
@@ -110,7 +206,7 @@ Future<void> logoutActiveUser() async {
   await prefs.remove('active_logged_username');
 }
 
-// Models
+// Service & Order Models
 class ServiceModel {
   final String service;
   final String name;
@@ -191,7 +287,7 @@ class OrderModel {
       );
 }
 
-// Global Network Helper Function
+// API Network Fetch Function
 Future<List<ServiceModel>> fetchServicesFromApi() async {
   final response = await http.post(
     Uri.parse(apiUrl),
@@ -227,7 +323,7 @@ Future<List<ServiceModel>> fetchServicesFromApi() async {
   }
 }
 
-// App-wide Store & Persistence for Local Orders Tracking
+// Local Orders Persistence
 List<OrderModel> userOrdersStore = [];
 
 Future<void> saveOrdersToStorage() async {
@@ -244,7 +340,174 @@ Future<void> loadOrdersFromStorage() async {
   }
 }
 
-// Puzzle Captcha Dialog Widget
+// Price Widget Helper (Supports Discounts)
+Widget buildPriceDisplay(String originalRateStr) {
+  final double originalRate = double.tryParse(originalRateStr) ?? 0.0;
+  if (globalDiscount > 0) {
+    final double discountedRate = math.max(0.0, originalRate - globalDiscount);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '\$${originalRate.toStringAsFixed(2)}',
+          style: const TextStyle(
+            color: Colors.grey,
+            fontSize: 12,
+            decoration: TextDecoration.lineThrough,
+            decorationColor: Colors.red,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '\$${discountedRate.toStringAsFixed(2)}',
+          style: const TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ],
+    );
+  } else {
+    return Text(
+      '\$${originalRate.toStringAsFixed(2)}',
+      style: const TextStyle(
+        color: Color(0xFF00A2FF),
+        fontWeight: FontWeight.bold,
+        fontSize: 16,
+      ),
+    );
+  }
+}
+
+// Animated Warning Icon for Instagram
+class AnimatedWarningIcon extends StatefulWidget {
+  const AnimatedWarningIcon({super.key});
+
+  @override
+  State<AnimatedWarningIcon> createState() => _AnimatedWarningIconState();
+}
+
+class _AnimatedWarningIconState extends State<AnimatedWarningIcon> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.25).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: const Icon(
+        Icons.warning_amber_rounded,
+        color: Colors.amber,
+        size: 26,
+      ),
+    );
+  }
+}
+
+// Animated Swinging Bell Icon Component
+class SwingingBellIcon extends StatefulWidget {
+  final VoidCallback onTap;
+  final int badgeCount;
+
+  const SwingingBellIcon({super.key, required this.onTap, required this.badgeCount});
+
+  @override
+  State<SwingingBellIcon> createState() => _SwingingBellIconState();
+}
+
+class _SwingingBellIconState extends State<SwingingBellIcon> with SingleTickerProviderStateMixin {
+  late AnimationController _bellController;
+  late Animation<double> _bellAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _bellController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    _bellAnimation = Tween<double>(begin: -0.15, end: 0.15).animate(
+      CurvedAnimation(parent: _bellController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _bellController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            RotationTransition(
+              turns: _bellAnimation,
+              child: const Icon(
+                Icons.notifications_active,
+                color: Colors.amber,
+                size: 26,
+              ),
+            ),
+            if (widget.badgeCount > 0)
+              Positioned(
+                top: 8,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    '${widget.badgeCount}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Captcha Dialog Widget
 class PuzzleCaptchaDialog extends StatefulWidget {
   final String imageUrl;
   final VoidCallback onSuccess;
@@ -484,7 +747,7 @@ class TriangleClipper extends CustomClipper<Path> {
   bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
 
-// Custom Rotating Settings Button Component
+// Rotating Settings Button
 class RotatingSettingsEmoji extends StatefulWidget {
   final VoidCallback onTap;
   const RotatingSettingsEmoji({super.key, required this.onTap});
@@ -518,7 +781,7 @@ class _RotatingSettingsEmojiState extends State<RotatingSettingsEmoji> with Sing
       child: RotationTransition(
         turns: _rotationController,
         child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 10),
+          padding: EdgeInsets.symmetric(horizontal: 6),
           child: Text(
             '⚙️',
             style: TextStyle(fontSize: 22),
@@ -529,7 +792,7 @@ class _RotatingSettingsEmojiState extends State<RotatingSettingsEmoji> with Sing
   }
 }
 
-// Dynamic Glowing Border Box Widget
+// Title Box Component
 class DynamicBorderTitleBox extends StatefulWidget {
   final String text;
   final bool isLarge;
@@ -615,7 +878,7 @@ class _DynamicBorderTitleBoxState extends State<DynamicBorderTitleBox> with Tick
   }
 }
 
-// Wave Dot Loading Animated Widget
+// Wave Loading Widget
 class WaveLoadingWidget extends StatefulWidget {
   const WaveLoadingWidget({super.key});
 
@@ -691,7 +954,7 @@ class _WaveLoadingWidgetState extends State<WaveLoadingWidget> with TickerProvid
   }
 }
 
-// Multi-color Rotating Loading Spinner
+// Rainbow Spinner Component
 class RainbowSpinner extends StatefulWidget {
   const RainbowSpinner({super.key});
 
@@ -740,7 +1003,7 @@ class _RainbowSpinnerState extends State<RainbowSpinner> with SingleTickerProvid
   }
 }
 
-// Global Top Animated Notification Overlay
+// RGB Notification Overlay
 void showRgbNotificationOverlay(BuildContext context, String message) {
   final overlayState = Overlay.of(context);
   late OverlayEntry overlayEntry;
@@ -865,7 +1128,7 @@ class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with Tic
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: 13,
                               ),
                             ),
                           ),
@@ -883,7 +1146,7 @@ class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with Tic
   }
 }
 
-// Dialog: Custom Styled Alert Popup
+// Dialog Helpers
 void showCustomAlertDialog(BuildContext context, {required String title, required String message, IconData icon = Icons.info_outline, Color iconColor = Colors.orangeAccent}) {
   showDialog(
     context: context,
@@ -918,7 +1181,6 @@ void showCustomAlertDialog(BuildContext context, {required String title, require
   );
 }
 
-// Dialog: Insufficient Funds Alert
 void showInsufficientFundsDialog(BuildContext context) {
   showDialog(
     context: context,
@@ -968,7 +1230,6 @@ void showInsufficientFundsDialog(BuildContext context) {
   );
 }
 
-// Dialog: About Us
 void showAboutUsDialog(BuildContext context) {
   showDialog(
     context: context,
@@ -1012,7 +1273,7 @@ void showAboutUsDialog(BuildContext context) {
   );
 }
 
-// Base Scaffold Wrapper
+// Base Scaffold Component
 class BaseScaffold extends StatelessWidget {
   final String title;
   final Widget body;
@@ -1084,6 +1345,9 @@ class BaseScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    int unreadCount = appNotificationsList.where((n) => !n.isRead).length;
+    if (hasNewUpdateBadge) unreadCount += 1;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -1099,6 +1363,17 @@ class BaseScaffold extends StatelessWidget {
             onPressed: () => Navigator.maybePop(context),
           ),
           actions: [
+            SwingingBellIcon(
+              badgeCount: unreadCount,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NotificationsListScreen(toggleTheme: toggleTheme, isDark: isDark),
+                  ),
+                );
+              },
+            ),
             RotatingSettingsEmoji(
               onTap: () => _showSettingsSheet(context),
             ),
@@ -1137,6 +1412,54 @@ class BaseScaffold extends StatelessWidget {
                 leading: const Icon(Icons.home, color: Color(0xFF00A2FF)),
                 title: const Text('الرئيسية'),
                 onTap: () => Navigator.pop(context),
+              ),
+              ListTile(
+                leading: Stack(
+                  children: [
+                    const Icon(Icons.system_update, color: Color(0xFF00A2FF)),
+                    if (hasNewUpdateBadge)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                title: Row(
+                  children: [
+                    const Text('التحديثات'),
+                    if (hasNewUpdateBadge) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          '1',
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UpdatesScreen(toggleTheme: toggleTheme, isDark: isDark),
+                    ),
+                  );
+                },
               ),
               ListTile(
                 leading: const Icon(Icons.info, color: Color(0xFF00A2FF)),
@@ -1197,6 +1520,156 @@ class BaseScaffold extends StatelessWidget {
   }
 }
 
+// Notifications List Screen
+class NotificationsListScreen extends StatefulWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+
+  const NotificationsListScreen({super.key, required this.toggleTheme, required this.isDark});
+
+  @override
+  State<NotificationsListScreen> createState() => _NotificationsListScreenState();
+}
+
+class _NotificationsListScreenState extends State<NotificationsListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    for (var n in appNotificationsList) {
+      n.isRead = true;
+    }
+    saveNotificationsToStorage();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseScaffold(
+      title: 'الإشعارات',
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: appNotificationsList.isEmpty
+          ? const Center(child: Text('لا توجد إشعارات حالياً'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: appNotificationsList.length,
+              itemBuilder: (context, index) {
+                final item = appNotificationsList[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  child: ListTile(
+                    leading: const Icon(Icons.notifications_active, color: Color(0xFF00A2FF)),
+                    title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        Text(item.body, style: const TextStyle(fontSize: 13)),
+                        const SizedBox(height: 4),
+                        Text(
+                          item.timestamp.toString().split('.')[0],
+                          style: const TextStyle(fontSize: 10, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+// Updates Screen
+class UpdatesScreen extends StatefulWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+
+  const UpdatesScreen({super.key, required this.toggleTheme, required this.isDark});
+
+  @override
+  State<UpdatesScreen> createState() => _UpdatesScreenState();
+}
+
+class _UpdatesScreenState extends State<UpdatesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    saveUpdateInfoToStorage(globalUpdateMsg, globalUpdateUrl, false);
+  }
+
+  void _downloadUpdate() async {
+    if (globalUpdateUrl.isNotEmpty) {
+      final uri = Uri.parse(globalUpdateUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri);
+      }
+    } else {
+      showCustomAlertDialog(
+        context,
+        title: 'تنبيه',
+        message: 'لا يوجد رابط تحديث مباشر متوفر حالياً.',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseScaffold(
+      title: 'التحديثات',
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.system_update_rounded, size: 80, color: Color(0xFF00A2FF)),
+              const SizedBox(height: 20),
+              const Text(
+                'هناك اصدار جديد متاح للتثبيت',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 15),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Text(
+                  globalUpdateMsg.isNotEmpty ? globalUpdateMsg : 'يرجى تنزيل الإصدار الجديد للحصول على أحدث الميزات والخدمات المتاحة داخل التطبيق.',
+                  style: const TextStyle(fontSize: 14, height: 1.5),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton.icon(
+                  onPressed: _downloadUpdate,
+                  icon: const Icon(Icons.download, color: Colors.white),
+                  label: const Text('تحميل التحديث', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00A2FF),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // 1. Splash Screen
 class SplashScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -1209,13 +1682,14 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final List<IconData> _socialIcons = [
-    Icons.camera_alt,
-    Icons.video_library,
-    Icons.facebook,
-    Icons.flutter_dash,
-    Icons.music_note,
-    Icons.send,
+  final List<String> _socialAppLogos = [
+    'https://img.icons8.com/color/144/instagram-new.png',
+    'https://img.icons8.com/color/144/tiktok.png',
+    'https://img.icons8.com/color/144/facebook-new.png',
+    'https://img.icons8.com/color/144/twitterx.png',
+    'https://img.icons8.com/color/144/telegram-app.png',
+    'https://img.icons8.com/color/144/whatsapp.png',
+    'https://img.icons8.com/color/144/spotify.png',
   ];
 
   int _currentIconIndex = 0;
@@ -1229,10 +1703,10 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _checkInitialState() async {
     await loadOrdersFromStorage();
-    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+    _timer = Timer.periodic(const Duration(milliseconds: 600), (timer) {
       if (mounted) {
         setState(() {
-          _currentIconIndex = (_currentIconIndex + 1) % _socialIcons.length;
+          _currentIconIndex = (_currentIconIndex + 1) % _socialAppLogos.length;
         });
       }
     });
@@ -1273,12 +1747,14 @@ class _SplashScreenState extends State<SplashScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Icon(
-                _socialIcons[_currentIconIndex],
+              duration: const Duration(milliseconds: 400),
+              child: Image.network(
+                _socialAppLogos[_currentIconIndex],
                 key: ValueKey<int>(_currentIconIndex),
-                size: 85,
-                color: const Color(0xFF00A2FF),
+                width: 85,
+                height: 85,
+                fit: BoxFit.contain,
+                errorBuilder: (ctx, err, stack) => const Icon(Icons.apps, size: 85, color: Color(0xFF00A2FF)),
               ),
             ),
             const SizedBox(height: 35),
@@ -1320,9 +1796,17 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    if (input == 'admin' && password == 'admin') {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => AdminDashboardScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+        ),
+      );
+      return;
+    }
+
     final users = await getUsersFromStorage();
 
-    // البحث بإسم المستخدم أو الإيميل
     UserAccountModel? matchedUser;
     for (var u in users) {
       if (u.username.toLowerCase() == input.toLowerCase() || u.email.toLowerCase() == input.toLowerCase()) {
@@ -1332,7 +1816,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (matchedUser == null) {
-      // الحساب غير موجود إطلاقاً
       if (!mounted) return;
       showCustomAlertDialog(
         context,
@@ -1342,7 +1825,6 @@ class _LoginScreenState extends State<LoginScreen> {
         iconColor: Colors.redAccent,
       );
     } else if (matchedUser.password != password) {
-      // الحساب موجود ولكن كلمة السر خطأ
       if (!mounted) return;
       showCustomAlertDialog(
         context,
@@ -1352,7 +1834,6 @@ class _LoginScreenState extends State<LoginScreen> {
         iconColor: Colors.orangeAccent,
       );
     } else {
-      // تسجل الدخول بنجاح
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('active_logged_username', matchedUser.username);
       await loadOrdersFromStorage();
@@ -1414,8 +1895,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 15),
-
-                // زر الانتقال لإنشاء حساب
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -1440,7 +1919,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 25),
                 SizedBox(
                   width: double.infinity,
@@ -1463,7 +1941,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// 2.1 Register Screen (إنشاء حساب جديد)
+// 2.1 Register Screen
 class RegisterScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -1502,7 +1980,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _checkUsername(String val) {
-    // التحقق من الحروف الإنجليزية فقط (عدم وجود حروف عربية)
     final arabicReg = RegExp(r'[\u0600-\u06FF]');
     setState(() {
       _isUsernameArabic = arabicReg.hasMatch(val);
@@ -1525,7 +2002,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
-    // 1. التحقق من الحقول الإجبارية
     if (username.isEmpty || email.isEmpty || password.isEmpty) {
       showCustomAlertDialog(
         context,
@@ -1537,7 +2013,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // 2. التحقق من اللغة الانكليزية لاسم المستخدم
     if (_isUsernameArabic || RegExp(r'[\u0600-\u06FF]').hasMatch(username)) {
       showCustomAlertDialog(
         context,
@@ -1549,7 +2024,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // 3. التحقق من نطاق gmail.com
     if (!email.toLowerCase().endsWith('@gmail.com')) {
       showCustomAlertDialog(
         context,
@@ -1561,7 +2035,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // 4. التحقق من المربعات الثلاثة لكلمة المرور
     List<String> failedRules = [];
     if (!_isPasswordMatching) {
       failedRules.add('• مربع "كلمة المرور متطابقة": كلمة المرور غير متطابقة مع حقل الإعادة.');
@@ -1584,7 +2057,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // فتح واجهة الكباتشا التفاعلية (سحب المثلث)
     PuzzleCaptchaDialog.show(
       context,
       onSuccess: () async {
@@ -1625,7 +2097,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // حقل اسم المستخدم
                 const Text('اسم المستخدم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 6),
                 TextField(
@@ -1653,10 +2124,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ],
-
                 const SizedBox(height: 16),
-
-                // حقل البريد الإلكتروني
                 const Text('البريد الإلكتروني', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 6),
                 TextField(
@@ -1685,10 +2153,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ],
-
                 const SizedBox(height: 16),
-
-                // حقل كلمة المرور
                 const Text('كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 6),
                 TextField(
@@ -1703,10 +2168,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
-                // حقل إعادة كلمة المرور
                 const Text('إعادة كتابة كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 6),
                 TextField(
@@ -1721,10 +2183,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
-                // مربعات مؤشرات الشروط
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -1742,10 +2201,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 25),
-
-                // زر تسجيل
                 SizedBox(
                   width: double.infinity,
                   height: 55,
@@ -1800,7 +2256,275 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 }
 
-// 3. Home Screen
+// 3. Admin Dashboard Screen
+class AdminDashboardScreen extends StatefulWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+
+  const AdminDashboardScreen({super.key, required this.toggleTheme, required this.isDark});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  int registeredUsersCount = 0;
+  String apiBalance = '0.00';
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAdminData();
+  }
+
+  Future<void> _loadAdminData() async {
+    final users = await getUsersFromStorage();
+    String fetchedBal = '0.00';
+    try {
+      final res = await http.post(
+        Uri.parse(apiUrl),
+        body: {'key': apiKey, 'action': 'balance'},
+      );
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        fetchedBal = data['balance']?.toString() ?? '0.00';
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        registeredUsersCount = users.length;
+        apiBalance = fetchedBal;
+        isLoading = false;
+      });
+    }
+  }
+
+  void _showNewUpdateDialog() {
+    final msgController = TextEditingController();
+    final urlController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('رفع تحديث جديد'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: msgController,
+                decoration: InputDecoration(
+                  labelText: 'كليشة الإرسال / تفاصيل التحديث',
+                  filled: true,
+                  fillColor: Theme.of(context).cardColor,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: urlController,
+                decoration: InputDecoration(
+                  labelText: 'رابط التحديث الجديد',
+                  filled: true,
+                  fillColor: Theme.of(context).cardColor,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+              onPressed: () {
+                final msg = msgController.text.trim();
+                final url = urlController.text.trim();
+                if (msg.isEmpty || url.isEmpty) return;
+
+                Navigator.pop(ctx);
+                showRgbNotificationOverlay(context, 'تم حفظ التحديث، سيتم إرسال الإشعار للمستخدمين بعد دقيقة واحدة.');
+
+                Timer(const Duration(minutes: 1), () {
+                  saveUpdateInfoToStorage(msg, url, true);
+                  addAppNotification(
+                    '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
+                    'هناك اصدار جديد من التطبيق الان متوفر',
+                    null,
+                  );
+                });
+              },
+              child: const Text('إرسال', style: TextStyle(color: Colors.white)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDiscountsDialog() {
+    final discountController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('إضافة خصومات جديدة'),
+          content: TextField(
+            controller: discountController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'قيمة الخصم (مثلاً 0.01)',
+              hintText: '0.01',
+              filled: true,
+              fillColor: Theme.of(context).cardColor,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+              onPressed: () async {
+                final val = double.tryParse(discountController.text.trim()) ?? 0.0;
+                await saveDiscountToStorage(val);
+                if (!mounted) return;
+                Navigator.pop(ctx);
+                showRgbNotificationOverlay(context, 'تم تطبيق الخصم، سيتم إرسال إشعار للمستخدمين بعد دقيقة واحدة.');
+
+                Timer(const Duration(minutes: 1), () {
+                  addAppNotification(
+                    '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
+                    'هناك خصومات جديدة بالتطبيق سارع بالشراء',
+                    null,
+                  );
+                });
+              },
+              child: const Text('تطبيق الخصم', style: TextStyle(color: Colors.white)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _resetPrices() async {
+    await saveDiscountToStorage(0.0);
+    if (!mounted) return;
+    showRgbNotificationOverlay(context, 'تم إلغاء جميع الخصومات وإرجاع الأسعار الأساسية.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseScaffold(
+      title: 'لوحة التحكم Admin',
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: isLoading
+          ? const Center(child: RainbowSpinner())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.1,
+                    children: [
+                      _buildAdminCard('مثبتين التطبيق', '1,280', Icons.download_done, Colors.blue),
+                      _buildAdminCard('النشطين الآن', '42', Icons.wifi_tethering, Colors.green),
+                      _buildAdminCard('الحسابات المسجلة', '$registeredUsersCount', Icons.email, Colors.orange),
+                      _buildAdminCard('رصيدك بالموقع', '\$$apiBalance', Icons.account_balance_wallet, Colors.purple),
+                    ],
+                  ),
+                  const SizedBox(height: 25),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _showNewUpdateDialog,
+                      icon: const Icon(Icons.system_update_alt, color: Colors.white),
+                      label: const Text('رفع تحديث جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _showDiscountsDialog,
+                      icon: const Icon(Icons.local_offer, color: Colors.white),
+                      label: const Text('خصومات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _resetPrices,
+                      icon: const Icon(Icons.restore, color: Colors.white),
+                      label: const Text('إرجاع الأسعار', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (_) => HomeScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.home),
+                    label: const Text('الانتقال للواجهة الرئيسية'),
+                  )
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildAdminCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(height: 8),
+          Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey), textAlign: TextAlign.center),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+}
+
+// 4. Home Screen
 class HomeScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -1893,7 +2617,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 20),
-
             Row(
               children: [
                 Expanded(
@@ -1935,7 +2658,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 12),
-
             _buildActionButton(
               icon: Icons.add_card,
               title: 'شحن الحساب (إضافة أموال)',
@@ -1952,7 +2674,6 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             const SizedBox(height: 20),
-
             Container(
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
@@ -1981,7 +2702,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
             if (searchResults.isNotEmpty) ...[
               const SizedBox(height: 15),
               ListView.builder(
@@ -1995,7 +2715,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: ListTile(
                       title: Text(s.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                       subtitle: Text('الفئة: ${s.category}'),
-                      trailing: Text('\$${s.rate}', style: const TextStyle(color: Color(0xFF00A2FF), fontWeight: FontWeight.bold)),
+                      trailing: buildPriceDisplay(s.rate),
                       onTap: () {
                         Navigator.push(
                           context,
@@ -2014,9 +2734,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
             ],
-
             const SizedBox(height: 25),
-
             const Align(
               alignment: Alignment.centerRight,
               child: Text(
@@ -2025,9 +2743,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 15),
-
             _buildPlatformGrid(),
-
             const SizedBox(height: 25),
           ],
         ),
@@ -2088,46 +2804,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildPlatformGrid() {
     final platforms = [
-      {
-        'name': 'انستكرام',
-        'iconUrl': 'https://img.icons8.com/color/144/instagram-new.png',
-        'key': 'instagram',
-      },
-      {
-        'name': 'تيك توك',
-        'iconUrl': 'https://img.icons8.com/color/144/tiktok.png',
-        'key': 'tiktok',
-      },
-      {
-        'name': 'فيسبوك',
-        'iconUrl': 'https://img.icons8.com/color/144/facebook-new.png',
-        'key': 'facebook',
-      },
-      {
-        'name': 'تويتر',
-        'iconUrl': 'https://img.icons8.com/color/144/twitterx.png',
-        'key': 'twitter',
-      },
-      {
-        'name': 'سبوتفاي',
-        'iconUrl': 'https://img.icons8.com/color/144/spotify.png',
-        'key': 'spotify',
-      },
-      {
-        'name': 'تليكرام',
-        'iconUrl': 'https://img.icons8.com/color/144/telegram-app.png',
-        'key': 'telegram',
-      },
-      {
-        'name': 'واتساب',
-        'iconUrl': 'https://img.icons8.com/color/144/whatsapp.png',
-        'key': 'whatsapp',
-      },
-      {
-        'name': 'ثريدز',
-        'iconUrl': 'https://img.icons8.com/color/144/threads.png',
-        'key': 'threads',
-      },
+      {'name': 'انستكرام', 'iconUrl': 'https://img.icons8.com/color/144/instagram-new.png', 'key': 'instagram'},
+      {'name': 'تيك توك', 'iconUrl': 'https://img.icons8.com/color/144/tiktok.png', 'key': 'tiktok'},
+      {'name': 'فيسبوك', 'iconUrl': 'https://img.icons8.com/color/144/facebook-new.png', 'key': 'facebook'},
+      {'name': 'تويتر', 'iconUrl': 'https://img.icons8.com/color/144/twitterx.png', 'key': 'twitter'},
+      {'name': 'سبوتفاي', 'iconUrl': 'https://img.icons8.com/color/144/spotify.png', 'key': 'spotify'},
+      {'name': 'تليكرام', 'iconUrl': 'https://img.icons8.com/color/144/telegram-app.png', 'key': 'telegram'},
+      {'name': 'واتساب', 'iconUrl': 'https://img.icons8.com/color/144/whatsapp.png', 'key': 'whatsapp'},
+      {'name': 'ثريدز', 'iconUrl': 'https://img.icons8.com/color/144/threads.png', 'key': 'threads'},
     ];
 
     return Column(
@@ -2218,7 +2902,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// 4. Add Funds Screen
+// 5. Add Funds Screen
 class AddFundsScreen extends StatelessWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -2319,7 +3003,7 @@ class AddFundsScreen extends StatelessWidget {
   }
 }
 
-// 5. Platform Services Screen
+// 6. Platform Services Screen
 class PlatformServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -2443,10 +3127,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Text(
-                                  '\$${item.rate}',
-                                  style: const TextStyle(color: Color(0xFF00A2FF), fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
+                                buildPriceDisplay(item.rate),
                                 const Text('لكل 1000', style: TextStyle(fontSize: 10, color: Colors.grey)),
                               ],
                             ),
@@ -2471,7 +3152,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
   }
 }
 
-// 6. Free Services Screen
+// 7. Free Services Screen
 class FreeServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -2562,7 +3243,12 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                           child: ListTile(
                             title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('ID: ${item.service} | السعر: \$${item.rate}'),
+                            subtitle: Row(
+                              children: [
+                                Text('ID: ${item.service} | '),
+                                buildPriceDisplay(item.rate),
+                              ],
+                            ),
                             trailing: ElevatedButton(
                               onPressed: () {
                                 Navigator.push(
@@ -2588,7 +3274,7 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
   }
 }
 
-// 7. Order Form Screen
+// 8. Order Form Screen
 class OrderFormScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -2610,8 +3296,9 @@ class OrderFormScreen extends StatefulWidget {
 class _OrderFormScreenState extends State<OrderFormScreen> {
   final _linkController = TextEditingController();
   final _quantityController = TextEditingController();
-  bool isSubmitting = false;
+  final _costController = TextEditingController(text: '\$0.00');
 
+  bool isSubmitting = false;
   bool isLinkInvalid = false;
   bool isQuantityInvalid = false;
   String? validationErrorMsg;
@@ -2648,10 +3335,19 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     );
   }
 
+  void _updateCost() {
+    final qty = int.tryParse(_quantityController.text.trim()) ?? 0;
+    final double originalRate = double.tryParse(widget.service.rate) ?? 0.0;
+    final double effectiveRate = math.max(0.0, originalRate - globalDiscount);
+    final double totalCost = (qty / 1000.0) * effectiveRate;
+    _costController.text = '\$${totalCost.toStringAsFixed(3)}';
+  }
+
   @override
   void dispose() {
     _linkController.dispose();
     _quantityController.dispose();
+    _costController.dispose();
     _youtubeController.dispose();
     super.dispose();
   }
@@ -2696,8 +3392,9 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       return;
     }
 
-    final double ratePer1000 = double.tryParse(widget.service.rate) ?? 0.0;
-    final double totalCost = (parsedQty / 1000.0) * ratePer1000;
+    final double originalRate = double.tryParse(widget.service.rate) ?? 0.0;
+    final double effectiveRate = math.max(0.0, originalRate - globalDiscount);
+    final double totalCost = (parsedQty / 1000.0) * effectiveRate;
 
     if (totalCost > 0 && totalCost > widget.userBalance) {
       showInsufficientFundsDialog(context);
@@ -2737,9 +3434,10 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           await saveOrdersToStorage();
 
           if (!mounted) return;
-          showRgbNotificationOverlay(
-            context,
+          addAppNotification(
+            '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
             'تم ارسال طلبك الان وتم خصم \$${totalCost.toStringAsFixed(2)}\$ دولار',
+            context,
           );
           Navigator.pop(context);
         } else {
@@ -2779,7 +3477,13 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                   children: [
                     Text(widget.service.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    Text('السعر لكل 1000: \$${widget.service.rate}', style: const TextStyle(color: Color(0xFF00A2FF))),
+                    Row(
+                      children: [
+                        const Text('السعر لكل 1000: '),
+                        buildPriceDisplay(widget.service.rate),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Text('الحد الأدنى: ${widget.service.min} | الحد الأقصى: ${widget.service.max}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
@@ -2807,6 +3511,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
             TextField(
               controller: _quantityController,
               keyboardType: TextInputType.number,
+              onChanged: (_) => _updateCost(),
               decoration: InputDecoration(
                 labelText: 'الكمية',
                 prefixIcon: const Icon(Icons.numbers, color: Color(0xFF00A2FF)),
@@ -2822,6 +3527,20 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _costController,
+              readOnly: true,
+              enabled: false,
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+              decoration: InputDecoration(
+                labelText: 'التكلفة الإجمالية للطلب',
+                prefixIcon: const Icon(Icons.attach_money, color: Colors.green),
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+              ),
+            ),
             if (validationErrorMsg != null) ...[
               const SizedBox(height: 12),
               Center(
@@ -2833,6 +3552,39 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
             ],
             if (isInstagramService) ...[
               const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.amber, width: 1.5),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        AnimatedWarningIcon(),
+                        SizedBox(width: 8),
+                        Text(
+                          'تنبيه',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'تنبيه: يجب أن يكون حسابك عام وليس خاص، ويرجى إيقاف زر المراجعة أو التمييز كما هو موضح في الفيديو أسفله.',
+                      style: TextStyle(fontSize: 13, height: 1.5, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 15),
               ClipRRect(
                 borderRadius: BorderRadius.circular(15),
                 child: YoutubePlayer(
@@ -2854,7 +3606,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                 ),
                 child: isSubmitting
                     ? const RainbowSpinner()
-                    : const Text('تأكيد الطلب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text('ارسال الطلب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ],
@@ -2864,7 +3616,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   }
 }
 
-// 8. Order History Screen
+// 9. Order History Screen
 class OrderHistoryScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -2935,9 +3687,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             if (_translateStatus(oldStatus) != 'مكتمل' && _translateStatus(newStatus) == 'مكتمل') {
               final timeStr = _getFormattedElapsedTime(order.createdAt);
               if (mounted) {
-                showRgbNotificationOverlay(
-                  context,
+                addAppNotification(
+                  '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
                   'تم اكتمال طلبك الذي طلبته قبل: $timeStr ✔',
+                  context,
                 );
               }
             }
