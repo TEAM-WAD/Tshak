@@ -23,7 +23,7 @@ jobs:
         with:
           channel: 'stable'
 
-      # إنشاء ملف pubspec.yaml بالمكتبات المطلوبة مع ضبط المسافات
+      # إنشاء ملف pubspec.yaml وتضمين مكتبات الصور والشبكة وأيقونات التطبيقات
       - name: Create pubspec.yaml automatically
         run: |
           cat <<'EOF' > pubspec.yaml
@@ -41,6 +41,8 @@ jobs:
             http: ^1.2.0
             shared_preferences: ^2.2.2
             cupertino_icons: ^1.0.8
+            cached_network_image: ^3.3.1
+            flutter_svg: ^2.0.10.1
 
           dev_dependencies:
             flutter_test:
@@ -58,8 +60,8 @@ jobs:
             flutter create . --platforms=android --org=com.example
           fi
 
-      # إضافة كافة الصلاحيات اللازمة للتطبيق في ملف AndroidManifest.xml
-      - name: Inject Android Permissions
+      # إضافة كافة الصلاحيات وتفعيل مرور صور الشبكة عبر الانترنيت
+      - name: Inject Android Permissions and Network Image Support
         run: |
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ]; then
@@ -68,6 +70,7 @@ jobs:
             sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>' "$MANIFEST_PATH"
             sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>' "$MANIFEST_PATH"
             sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>' "$MANIFEST_PATH"
+            sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST_PATH"
           fi
 
       - name: Install Dependencies
