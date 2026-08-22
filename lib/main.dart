@@ -1327,13 +1327,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildPlatformGrid() {
     final platforms = [
-      {'name': 'انستكرام', 'icon': Icons.camera_alt, 'color': const Color(0xFFE1306C), 'key': 'instagram'},
-      {'name': 'تيك توك', 'icon': Icons.video_library, 'color': const Color(0xFF000000), 'key': 'tiktok'},
-      {'name': 'فيسبوك', 'icon': Icons.facebook, 'color': const Color(0xFF1877F2), 'key': 'facebook'},
-      {'name': 'تويتر', 'icon': Icons.flutter_dash, 'color': const Color(0xFF1DA1F2), 'key': 'twitter'},
-      {'name': 'سبوتفاي', 'icon': Icons.music_note, 'color': const Color(0xFF1DB954), 'key': 'spotify'},
-      {'name': 'تليكرام', 'icon': Icons.send, 'color': const Color(0xFF0088CC), 'key': 'telegram'},
-      {'name': 'واتساب', 'icon': Icons.chat, 'color': const Color(0xFF25D366), 'key': 'whatsapp'},
+      {
+        'name': 'انستكرام',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/512px-Instagram_logo_2016.svg.png',
+        'key': 'instagram',
+      },
+      {
+        'name': 'تيك توك',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/TikTok_logo.svg/512px-TikTok_logo.svg.png',
+        'key': 'tiktok',
+      },
+      {
+        'name': 'فيسبوك',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/512px-Facebook_Logo_%282019%29.png',
+        'key': 'facebook',
+      },
+      {
+        'name': 'تويتر',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/X_logo_2023.svg/512px-X_logo_2023.svg.png',
+        'key': 'twitter',
+      },
+      {
+        'name': 'سبوتفاي',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/512px-Spotify_logo_without_text.svg.png',
+        'key': 'spotify',
+      },
+      {
+        'name': 'تليكرام',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Telegram_logo.svg/512px-Telegram_logo.svg.png',
+        'key': 'telegram',
+      },
+      {
+        'name': 'واتساب',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/512px-WhatsApp.svg.png',
+        'key': 'whatsapp',
+      },
+      {
+        'name': 'ثريدز',
+        'iconUrl': 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Threads_%28app%29_logo.svg/512px-Threads_%28app%29_logo.svg.png',
+        'key': 'threads',
+      },
     ];
 
     return Column(
@@ -1366,14 +1399,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Expanded(child: _buildPlatformTile(platforms[6])),
             const SizedBox(width: 12),
-            Expanded(
-              child: _buildPlatformTile({
-                'name': 'ثريدز',
-                'icon': Icons.alternate_email,
-                'color': const Color(0xFF000000),
-                'key': 'threads',
-              }),
-            ),
+            Expanded(child: _buildPlatformTile(platforms[7])),
           ],
         ),
       ],
@@ -1398,7 +1424,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
@@ -1406,18 +1432,23 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: (platform['color'] as Color).withOpacity(0.15),
-                shape: BoxShape.circle,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                platform['iconUrl'] as String,
+                width: 28,
+                height: 28,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => const Icon(Icons.apps, size: 28),
               ),
-              child: Icon(platform['icon'] as IconData, color: platform['color'] as Color, size: 24),
             ),
             const SizedBox(width: 12),
-            Text(
-              platform['name'] as String,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            Expanded(
+              child: Text(
+                platform['name'] as String,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
