@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
@@ -157,7 +158,7 @@ void addAppNotification(String title, String body, BuildContext? context) {
   }
 }
 
-// User Account Model & Persistence Helpers
+// User Account Model & Per-User Persistence
 class UserAccountModel {
   final String username;
   final String email;
@@ -194,6 +195,8 @@ Future<void> saveUserAccount(UserAccountModel user) async {
   final List<String> encoded = users.map((u) => json.encode(u.toJson())).toList();
   await prefs.setStringList('app_users_list', encoded);
   await prefs.setString('active_logged_username', user.username);
+  await setUserBalance(user.username, 0.0);
+  await setUserSpending(user.username, 0.0);
 }
 
 Future<String?> getActiveLoggedUser() async {
@@ -204,6 +207,42 @@ Future<String?> getActiveLoggedUser() async {
 Future<void> logoutActiveUser() async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove('active_logged_username');
+}
+
+// Per-User Storage Helpers
+Future<double> getUserBalance(String username) async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getDouble('user_balance_$username') ?? 0.0;
+}
+
+Future<void> setUserBalance(String username, double val) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setDouble('user_balance_$username', val);
+}
+
+Future<double> getUserSpending(String username) async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getDouble('user_spending_$username') ?? 0.0;
+}
+
+Future<void> setUserSpending(String username, double val) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setDouble('user_spending_$username', val);
+}
+
+Future<List<OrderModel>> getUserOrders(String username) async {
+  final prefs = await SharedPreferences.getInstance();
+  final List<String>? encoded = prefs.getStringList('user_orders_$username');
+  if (encoded != null) {
+    return encoded.map((item) => OrderModel.fromJson(json.decode(item))).toList();
+  }
+  return [];
+}
+
+Future<void> saveUserOrders(String username, List<OrderModel> orders) async {
+  final prefs = await SharedPreferences.getInstance();
+  final List<String> encoded = orders.map((o) => json.encode(o.toJson())).toList();
+  await prefs.setStringList('user_orders_$username', encoded);
 }
 
 // Service & Order Models
@@ -323,24 +362,33 @@ Future<List<ServiceModel>> fetchServicesFromApi() async {
   }
 }
 
-// Local Orders Persistence
-List<OrderModel> userOrdersStore = [];
+// App Logo Widget
+class AppLogoWidget extends StatelessWidget {
+  final double size;
+  const AppLogoWidget({super.key, this.size = 26});
 
-Future<void> saveOrdersToStorage() async {
-  final prefs = await SharedPreferences.getInstance();
-  final List<String> encoded = userOrdersStore.map((o) => json.encode(o.toJson())).toList();
-  await prefs.setStringList('user_orders_key', encoded);
-}
-
-Future<void> loadOrdersFromStorage() async {
-  final prefs = await SharedPreferences.getInstance();
-  final List<String>? encoded = prefs.getStringList('user_orders_key');
-  if (encoded != null) {
-    userOrdersStore = encoded.map((item) => OrderModel.fromJson(json.decode(item))).toList();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFF00A2FF), Color(0xFF0055FF)],
+        ),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Image.network(
+        'https://img.icons8.com/color/144/instagram-new.png',
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Icon(Icons.bolt, size: size * 0.6, color: Colors.white),
+      ),
+    );
   }
 }
 
-// Price Widget Helper (Supports Discounts)
+// Price Display Widget
 Widget buildPriceDisplay(String originalRateStr) {
   final double originalRate = double.tryParse(originalRateStr) ?? 0.0;
   if (globalDiscount > 0) {
@@ -380,51 +428,7 @@ Widget buildPriceDisplay(String originalRateStr) {
   }
 }
 
-// Animated Warning Icon for Instagram
-class AnimatedWarningIcon extends StatefulWidget {
-  const AnimatedWarningIcon({super.key});
-
-  @override
-  State<AnimatedWarningIcon> createState() => _AnimatedWarningIconState();
-}
-
-class _AnimatedWarningIconState extends State<AnimatedWarningIcon> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    )..repeat(reverse: true);
-
-    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.25).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: const Icon(
-        Icons.warning_amber_rounded,
-        color: Colors.amber,
-        size: 26,
-      ),
-    );
-  }
-}
-
-// Animated Swinging Bell Icon Component
+// Swinging Bell Icon Component
 class SwingingBellIcon extends StatefulWidget {
   final VoidCallback onTap;
   final int badgeCount;
@@ -782,17 +786,14 @@ class _RotatingSettingsEmojiState extends State<RotatingSettingsEmoji> with Sing
         turns: _rotationController,
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 6),
-          child: Text(
-            '⚙️',
-            style: TextStyle(fontSize: 22),
-          ),
+          child: Icon(Icons.settings, color: Colors.white, size: 24),
         ),
       ),
     );
   }
 }
 
-// Title Box Component
+// Dynamic Title Box
 class DynamicBorderTitleBox extends StatefulWidget {
   final String text;
   final bool isLarge;
@@ -1003,7 +1004,7 @@ class _RainbowSpinnerState extends State<RainbowSpinner> with SingleTickerProvid
   }
 }
 
-// RGB Notification Overlay
+// Top Overlay RGB Notification
 void showRgbNotificationOverlay(BuildContext context, String message) {
   final overlayState = Overlay.of(context);
   late OverlayEntry overlayEntry;
@@ -1113,14 +1114,7 @@ class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with Tic
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.green,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.check, color: Colors.white, size: 20),
-                          ),
+                          const AppLogoWidget(size: 28),
                           const SizedBox(width: 14),
                           Expanded(
                             child: Text(
@@ -1140,6 +1134,75 @@ class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with Tic
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// Animated Yellow Warning Box Component
+class AnimatedYellowWarningBox extends StatefulWidget {
+  final String text;
+  const AnimatedYellowWarningBox({super.key, required this.text});
+
+  @override
+  State<AnimatedYellowWarningBox> createState() => _AnimatedYellowWarningBoxState();
+}
+
+class _AnimatedYellowWarningBoxState extends State<AnimatedYellowWarningBox> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacityAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+    _opacityAnim = Tween<double>(begin: 0.65, end: 1.0).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacityAnim,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.amber.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.amber, width: 1.8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'يرجى القراءة بتمهل ⚠️',
+                    style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.text,
+                    style: const TextStyle(fontSize: 13, height: 1.4, color: Colors.amberAccent, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1193,11 +1256,11 @@ void showInsufficientFundsDialog(BuildContext context) {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
             SizedBox(width: 10),
-            Text('تنبيه هام', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text('رصيدك غير كافي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           ],
         ),
         content: const Text(
-          'عذراً عزيزي المستخدم، لا تمتلك في حسابك رصيد كافي لطلب هذه الخدمة.\n\nيرجى إعادة شحن حسابك عبر طرق الدفع المتاحة لكي تمكن من الاستمرار في تنفيذ طلبك بنجاح.',
+          'عذراً عزيزي المستخدم، لا تمتلك رصيد كافي في حسابك بالتطبيق لطلب هذه الخدمة.\n\nيرجى إعادة شحن حسابك عبر طرق الدفع المتاحة لكي تتمكن من الاستمرار في تنفيذ طلبك بنجاح.',
           style: TextStyle(fontSize: 15, height: 1.5),
         ),
         actions: [
@@ -1240,7 +1303,7 @@ void showAboutUsDialog(BuildContext context) {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.info_outline, color: Color(0xFF00A2FF), size: 28),
+            AppLogoWidget(size: 26),
             SizedBox(width: 10),
             Text('من نحن', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           ],
@@ -1398,7 +1461,7 @@ class BaseScaffold extends StatelessWidget {
                     CircleAvatar(
                       radius: 35,
                       backgroundColor: Colors.white24,
-                      child: Icon(Icons.person, size: 40, color: Colors.white),
+                      child: AppLogoWidget(size: 40),
                     ),
                     SizedBox(height: 10),
                     Text(
@@ -1490,7 +1553,7 @@ class BaseScaffold extends StatelessWidget {
                 },
               ),
               ListTile(
-                leading: const Text('⚙️', style: TextStyle(fontSize: 20)),
+                leading: const Icon(Icons.settings, color: Color(0xFF00A2FF)),
                 title: const Text('الإعدادات'),
                 onTap: () {
                   Navigator.pop(context);
@@ -1558,7 +1621,7 @@ class _NotificationsListScreenState extends State<NotificationsListScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   child: ListTile(
-                    leading: const Icon(Icons.notifications_active, color: Color(0xFF00A2FF)),
+                    leading: const AppLogoWidget(size: 28),
                     title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1702,7 +1765,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _checkInitialState() async {
-    await loadOrdersFromStorage();
     _timer = Timer.periodic(const Duration(milliseconds: 600), (timer) {
       if (mounted) {
         setState(() {
@@ -1754,7 +1816,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 width: 85,
                 height: 85,
                 fit: BoxFit.contain,
-                errorBuilder: (ctx, err, stack) => const Icon(Icons.apps, size: 85, color: Color(0xFF00A2FF)),
+                errorBuilder: (ctx, err, stack) => const AppLogoWidget(size: 85),
               ),
             ),
             const SizedBox(height: 35),
@@ -1836,7 +1898,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('active_logged_username', matchedUser.username);
-      await loadOrdersFromStorage();
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -1852,88 +1913,108 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF00A2FF).withOpacity(0.15),
-                  ),
-                  child: const Icon(Icons.lock_outline, size: 60, color: Color(0xFF00A2FF)),
-                ),
-                const SizedBox(height: 25),
-                const Text(
-                  'تسجيل الدخول',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 30),
-                TextField(
-                  controller: _inputController,
-                  decoration: InputDecoration(
-                    labelText: 'اسم المستخدم أو البريد الإلكتروني',
-                    prefixIcon: const Icon(Icons.person, color: Color(0xFF00A2FF)),
-                    filled: true,
-                    fillColor: Theme.of(context).cardColor,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: 'كلمة المرور',
-                    prefixIcon: const Icon(Icons.lock, color: Color(0xFF00A2FF)),
-                    filled: true,
-                    fillColor: Theme.of(context).cardColor,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('ليس لديك حساب ؟ ', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => RegisterScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF00A2FF).withOpacity(0.15),
                           ),
-                        );
-                      },
-                      child: const Text(
-                        'إنشاء حساب',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF00A2FF),
+                          child: const AppLogoWidget(size: 60),
                         ),
-                      ),
+                        const SizedBox(height: 25),
+                        const Text(
+                          'تسجيل الدخول',
+                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 30),
+                        TextField(
+                          controller: _inputController,
+                          decoration: InputDecoration(
+                            labelText: 'اسم المستخدم أو البريد الإلكتروني',
+                            prefixIcon: const Icon(Icons.person, color: Color(0xFF00A2FF)),
+                            filled: true,
+                            fillColor: Theme.of(context).cardColor,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: 'كلمة المرور',
+                            prefixIcon: const Icon(Icons.lock, color: Color(0xFF00A2FF)),
+                            filled: true,
+                            fillColor: Theme.of(context).cardColor,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text('ليس لديك حساب ؟ ', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => RegisterScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+                                  ),
+                                );
+                              },
+                              child: const Text(
+                                'إنشاء حساب',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF00A2FF),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 25),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: _handleLogin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF00A2FF),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                            ),
+                            child: const Text('دخول', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 25),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _handleLogin,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00A2FF),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                    child: const Text('دخول', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                 ),
-              ],
-            ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 16.0),
+                child: Text(
+                  'جميع الحقوق محفوظة لدى @Mohammed Al-Hussein',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -2066,10 +2147,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           password: password,
         );
         await saveUserAccount(newUser);
-        await loadOrdersFromStorage();
 
         if (!mounted) return;
-        showRgbNotificationOverlay(context, 'تم إنشاء حسابك بنجاح! أهلاً بك 🎉');
+        addAppNotification('𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', 'تم إنشاء حسابك بنجاح! أهلاً بك 🎉', context);
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
@@ -2345,16 +2425,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 if (msg.isEmpty || url.isEmpty) return;
 
                 Navigator.pop(ctx);
-                showRgbNotificationOverlay(context, 'تم حفظ التحديث، سيتم إرسال الإشعار للمستخدمين بعد دقيقة واحدة.');
+                addAppNotification('𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', 'هناك اصدار جديد من التطبيق الان متوفر', context);
 
-                Timer(const Duration(minutes: 1), () {
-                  saveUpdateInfoToStorage(msg, url, true);
-                  addAppNotification(
-                    '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
-                    'هناك اصدار جديد من التطبيق الان متوفر',
-                    null,
-                  );
-                });
+                saveUpdateInfoToStorage(msg, url, true);
               },
               child: const Text('إرسال', style: TextStyle(color: Colors.white)),
             ),
@@ -2397,15 +2470,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 await saveDiscountToStorage(val);
                 if (!mounted) return;
                 Navigator.pop(ctx);
-                showRgbNotificationOverlay(context, 'تم تطبيق الخصم، سيتم إرسال إشعار للمستخدمين بعد دقيقة واحدة.');
-
-                Timer(const Duration(minutes: 1), () {
-                  addAppNotification(
-                    '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
-                    'هناك خصومات جديدة بالتطبيق سارع بالشراء',
-                    null,
-                  );
-                });
+                addAppNotification('𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', 'هناك خصومات جديدة بالتطبيق سارع بالشراء', context);
               },
               child: const Text('تطبيق الخصم', style: TextStyle(color: Colors.white)),
             ),
@@ -2448,7 +2513,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       _buildAdminCard('مثبتين التطبيق', '1,280', Icons.download_done, Colors.blue),
                       _buildAdminCard('النشطين الآن', '42', Icons.wifi_tethering, Colors.green),
                       _buildAdminCard('الحسابات المسجلة', '$registeredUsersCount', Icons.email, Colors.orange),
-                      _buildAdminCard('رصيدك بالموقع', '\$$apiBalance', Icons.account_balance_wallet, Colors.purple),
+                      _buildAdminCard('رصيدك بالموقع الرئيسي', '\$$apiBalance', Icons.account_balance_wallet, Colors.purple),
                     ],
                   ),
                   const SizedBox(height: 25),
@@ -2535,48 +2600,91 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  String balance = '0.00';
-  String spending = '0';
-  bool isLoadingStats = true;
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+  String currentUser = '';
+  double userBalance = 0.0;
+  double userSpending = 0.0;
+  List<OrderModel> userOrders = [];
+  int totalOrdersCount = 1885;
 
   List<ServiceModel> allServices = [];
   List<ServiceModel> searchResults = [];
-  final TextEditingController _searchController = TextEditingController();
+  ServiceModel? mostRequestedService;
+  
+  Timer? _totalOrdersTimer;
+  Timer? _mostRequestedTimer;
+
+  late AnimationController _borderAnimController;
 
   @override
   void initState() {
     super.initState();
-    _fetchAccountStats();
-    _fetchAllServices();
-  }
+    _borderAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
 
-  Future<void> _fetchAccountStats() async {
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        body: {'key': apiKey, 'action': 'balance'},
-      );
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+    _loadUserData();
+    _fetchAllServices();
+
+    // Increment total orders count dynamically online
+    _totalOrdersTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted) {
         setState(() {
-          balance = data['balance']?.toString() ?? '0.00';
-          spending = '0';
-          isLoadingStats = false;
+          totalOrdersCount += math.Random().nextInt(2) + 1;
         });
       }
-    } catch (_) {
-      setState(() => isLoadingStats = false);
+    });
+
+    // Rotate most requested service every 3 minutes
+    _mostRequestedTimer = Timer.periodic(const Duration(minutes: 3), (timer) {
+      _pickRandomMostRequestedService();
+    });
+  }
+
+  @override
+  void dispose() {
+    _borderAnimController.dispose();
+    _totalOrdersTimer?.cancel();
+    _mostRequestedTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    final active = await getActiveLoggedUser() ?? 'guest';
+    final bal = await getUserBalance(active);
+    final sp = await getUserSpending(active);
+    final ords = await getUserOrders(active);
+
+    if (mounted) {
+      setState(() {
+        currentUser = active;
+        userBalance = bal;
+        userSpending = sp;
+        userOrders = ords;
+      });
     }
   }
 
   Future<void> _fetchAllServices() async {
     try {
       final list = await fetchServicesFromApi();
-      setState(() {
-        allServices = list;
-      });
+      if (mounted) {
+        setState(() {
+          allServices = list;
+        });
+        _pickRandomMostRequestedService();
+      }
     } catch (_) {}
+  }
+
+  void _pickRandomMostRequestedService() {
+    if (allServices.isNotEmpty && mounted) {
+      final random = math.Random();
+      setState(() {
+        mostRequestedService = allServices[random.nextInt(allServices.length)];
+      });
+    }
   }
 
   void _onSearchChanged(String query) {
@@ -2598,154 +2706,164 @@ class _HomeScreenState extends State<HomeScreen> {
       showHeaderTitle: true,
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          children: [
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.15,
-              children: [
-                _buildStatCard('رصيدك', '\$$balance', Icons.account_balance_wallet, Colors.blueAccent),
-                _buildStatCard('إنفاقك', '\$$spending', Icons.receipt_long, Colors.orangeAccent),
-                _buildStatCard('طلباتك', '${userOrdersStore.length}', Icons.emoji_events, Colors.redAccent),
-                _buildStatCard('إجمالي الطلبات', '1885', Icons.show_chart, Colors.greenAccent),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.card_giftcard,
-                    title: 'خدمات مجانية',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FreeServicesScreen(
-                            toggleTheme: widget.toggleTheme,
-                            isDark: widget.isDark,
-                            userBalance: double.tryParse(balance) ?? 0.0,
-                          ),
-                        ),
-                      ).then((_) => setState(() {}));
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.history,
-                    title: 'سجل الطلبات',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => OrderHistoryScreen(
-                            toggleTheme: widget.toggleTheme,
-                            isDark: widget.isDark,
-                          ),
-                        ),
-                      ).then((_) => setState(() {}));
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _buildActionButton(
-              icon: Icons.add_card,
-              title: 'شحن الحساب (إضافة أموال)',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AddFundsScreen(
-                      toggleTheme: widget.toggleTheme,
-                      isDark: widget.isDark,
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF00A2FF), Color(0xFF0066FF)],
-                ),
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(color: const Color(0xFF00A2FF).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
-                ],
-              ),
-              padding: const EdgeInsets.all(3),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  decoration: const InputDecoration(
-                    hintText: 'بحث في خدمات التطبيق...',
-                    prefixIcon: Icon(Icons.search, color: Color(0xFF00A2FF)),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 14),
-                  ),
-                ),
-              ),
-            ),
-            if (searchResults.isNotEmpty) ...[
-              const SizedBox(height: 15),
-              ListView.builder(
+      body: RefreshIndicator(
+        onRefresh: _loadUserData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            children: [
+              GridView.count(
+                crossAxisCount: 2,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: searchResults.length,
-                itemBuilder: (ctx, idx) {
-                  final s = searchResults[idx];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      title: Text(s.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                      subtitle: Text('الفئة: ${s.category}'),
-                      trailing: buildPriceDisplay(s.rate),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.15,
+                children: [
+                  _buildStatCard('رصيدك', '\$${userBalance.toStringAsFixed(2)}', Icons.account_balance_wallet, Colors.blueAccent),
+                  _buildStatCard('إنفاقك', '\$${userSpending.toStringAsFixed(2)}', Icons.receipt_long, Colors.orangeAccent),
+                  _buildStatCard('طلباتك', '${userOrders.length}', Icons.emoji_events, Colors.redAccent),
+                  _buildStatCard('إجمالي الطلبات', '$totalOrdersCount', Icons.show_chart, Colors.greenAccent),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.card_giftcard,
+                      title: 'خدمات مجانية',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => OrderFormScreen(
+                            builder: (_) => FreeServicesScreen(
                               toggleTheme: widget.toggleTheme,
                               isDark: widget.isDark,
-                              service: s,
-                              userBalance: double.tryParse(balance) ?? 0.0,
+                              currentUser: currentUser,
+                              userBalance: userBalance,
                             ),
                           ),
-                        ).then((_) => setState(() {}));
+                        ).then((_) => _loadUserData());
                       },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.history,
+                      title: 'سجل الطلبات',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => OrderHistoryScreen(
+                              toggleTheme: widget.toggleTheme,
+                              isDark: widget.isDark,
+                              currentUser: currentUser,
+                            ),
+                          ),
+                        ).then((_) => _loadUserData());
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildActionButton(
+                icon: Icons.add_card,
+                title: 'شحن الحساب (إضافة أموال)',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AddFundsScreen(
+                        toggleTheme: widget.toggleTheme,
+                        isDark: widget.isDark,
+                      ),
                     ),
                   );
                 },
               ),
-            ],
-            const SizedBox(height: 25),
-            const Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                'اختر المنصة أولاً',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
+              const SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF00A2FF), Color(0xFF0066FF)],
+                  ),
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [
+                    BoxShadow(color: const Color(0xFF00A2FF).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
+                  ],
+                ),
+                padding: const EdgeInsets.all(3),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    controller: TextEditingController(text: searchResults.isNotEmpty ? null : null),
+                    onChanged: _onSearchChanged,
+                    decoration: const InputDecoration(
+                      hintText: 'بحث في خدمات التطبيق...',
+                      prefixIcon: Icon(Icons.search, color: Color(0xFF00A2FF)),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 15),
-            _buildPlatformGrid(),
-            const SizedBox(height: 25),
-          ],
+              if (searchResults.isNotEmpty) ...[
+                const SizedBox(height: 15),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: searchResults.length,
+                  itemBuilder: (ctx, idx) {
+                    final s = searchResults[idx];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const AppLogoWidget(size: 24),
+                        title: Text(s.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        subtitle: Text('الفئة: ${s.category}'),
+                        trailing: buildPriceDisplay(s.rate),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrderFormScreen(
+                                toggleTheme: widget.toggleTheme,
+                                isDark: widget.isDark,
+                                service: s,
+                                currentUser: currentUser,
+                                userBalance: userBalance,
+                              ),
+                            ),
+                          ).then((_) => _loadUserData());
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ],
+              const SizedBox(height: 25),
+              const Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'اختر المنصة أولاً',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
+                ),
+              ),
+              const SizedBox(height: 15),
+              _buildPlatformGrid(),
+              const SizedBox(height: 20),
+              if (mostRequestedService != null) _buildMostRequestedCard(),
+              const SizedBox(height: 25),
+            ],
+          ),
         ),
       ),
     );
@@ -2862,10 +2980,11 @@ class _HomeScreenState extends State<HomeScreen> {
               isDark: widget.isDark,
               platformName: platform['name'] as String,
               platformKey: platform['key'] as String,
-              userBalance: double.tryParse(balance) ?? 0.0,
+              currentUser: currentUser,
+              userBalance: userBalance,
             ),
           ),
-        ).then((_) => setState(() {}));
+        ).then((_) => _loadUserData());
       },
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -2900,6 +3019,95 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  Widget _buildMostRequestedCard() {
+    final s = mostRequestedService!;
+    return AnimatedBuilder(
+      animation: _borderAnimController,
+      builder: (context, child) {
+        final val = _borderAnimController.value;
+        final animatedBorderColor = HSLColor.fromAHSL(1.0, (val * 360) % 360, 0.85, 0.55).toColor();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: animatedBorderColor, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: animatedBorderColor.withOpacity(0.25),
+                blurRadius: 10,
+                spreadRadius: 1,
+              )
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: animatedBorderColor,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'الأكثر طلباً بالتطبيق 🔥',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                  buildPriceDisplay(s.rate),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                s.name,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'الفئة: ${s.category}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('الحد الأدنى: ${s.min} | الأقصى: ${s.max}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A2FF),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OrderFormScreen(
+                            toggleTheme: widget.toggleTheme,
+                            isDark: widget.isDark,
+                            service: s,
+                            currentUser: currentUser,
+                            userBalance: userBalance,
+                          ),
+                        ),
+                      ).then((_) => _loadUserData());
+                    },
+                    child: const Text('طلب الآن', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 // 5. Add Funds Screen
@@ -2921,7 +3129,7 @@ class AddFundsScreen extends StatelessWidget {
           children: [
             const SizedBox(height: 10),
             const Text(
-              'طرق دفع المتوفرة داخل التطبيق حالياً',
+              'طرق الدفع المتوفرة داخل التطبيق حالياً',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
               textAlign: TextAlign.center,
             ),
@@ -2932,6 +3140,7 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'دفع مباشر عبر البطاقات البنكية',
               icon: Icons.credit_card,
               iconColor: Colors.orange,
+              onTap: () => _navigateToDetail(context, 'ماستر كارد', '07700000000'),
             ),
             const SizedBox(height: 15),
             _buildPaymentTile(
@@ -2940,6 +3149,7 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'تحويل رصيد أو كارتات شحن',
               icon: Icons.phone_android,
               iconColor: Colors.redAccent,
+              onTap: () => _navigateToDetail(context, 'آسيا سيل', '07701234567'),
             ),
             const SizedBox(height: 15),
             _buildPaymentTile(
@@ -2948,8 +3158,41 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'الدفع المباشر عبر محفظة زين كاش',
               icon: Icons.account_balance_wallet,
               iconColor: Colors.pink,
+              onTap: () => _navigateToDetail(context, 'زين كاش', '07801234567'),
+            ),
+            const SizedBox(height: 15),
+            _buildPaymentTile(
+              context: context,
+              title: 'زين العراق / Zain Iraq',
+              subtitle: 'تحويل رصيد عبر خطوط زين العراق',
+              icon: Icons.cell_tower,
+              iconColor: Colors.purple,
+              onTap: () => _navigateToDetail(context, 'زين العراق', '07809876543'),
+            ),
+            const SizedBox(height: 15),
+            _buildPaymentTile(
+              context: context,
+              title: 'آسيا حواله / Asia Hawala',
+              subtitle: 'تحويل أموال مباشر عبر آسيا حوالة',
+              icon: Icons.send_to_mobile,
+              iconColor: Colors.teal,
+              onTap: () => _navigateToDetail(context, 'آسيا حواله', '07709876543'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToDetail(BuildContext context, String methodName, String number) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaymentDetailScreen(
+          toggleTheme: toggleTheme,
+          isDark: isDark,
+          methodName: methodName,
+          accountNumber: number,
         ),
       ),
     );
@@ -2961,43 +3204,202 @@ class AddFundsScreen extends StatelessWidget {
     required String subtitle,
     required IconData icon,
     required Color iconColor,
+    required VoidCallback onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+          ],
+        ),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: iconColor, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+    );
+  }
+}
+
+// 5.1 Payment Detail Screen
+class PaymentDetailScreen extends StatefulWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+  final String methodName;
+  final String accountNumber;
+
+  const PaymentDetailScreen({
+    super.key,
+    required this.toggleTheme,
+    required this.isDark,
+    required this.methodName,
+    required this.accountNumber,
+  });
+
+  @override
+  State<PaymentDetailScreen> createState() => _PaymentDetailScreenState();
+}
+
+class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
+  final _senderNumberController = TextEditingController();
+  final _amountController = TextEditingController();
+
+  void _submitPaymentProof() {
+    final sender = _senderNumberController.text.trim();
+    final amount = _amountController.text.trim();
+
+    if (sender.isEmpty || amount.isEmpty) {
+      showCustomAlertDialog(
+        context,
+        title: 'تنبيه',
+        message: 'يرجى إدخال رقم المرسل أو الرقم المرجعي للتحويل والمبلغ المحول.',
+      );
+      return;
+    }
+
+    addAppNotification(
+      '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
+      'تم إرسال طلب شحن الحساب عبر ${widget.methodName} بنجاح! سيتم مراجعة إثبات التحويل وإضافة الرصيد فوراً.',
+      context,
+    );
+
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseScaffold(
+      title: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
+      showHeaderTitle: true,
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF00A2FF), Color(0xFF0055FF)],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Center(
+                child: Text(
+                  '1$=1$ سد بسد بدون عموله زايده',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                 ),
-              ],
+              ),
             ),
-          ),
-          const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-        ],
+            const SizedBox(height: 20),
+            Text(
+              'حول المبلغ عبر ${widget.methodName}',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF)),
+            ),
+            const SizedBox(height: 15),
+            const AnimatedYellowWarningBox(
+              text: 'لازم ترسل اثبات التحويل اموال لاي تحويل مالي لدينا لتأكيد عملية الشحن بنجاح.',
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                children: [
+                  Text('طريقة الدفع عبر ${widget.methodName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 12),
+                  const Text('حول إلى الرقم التابع للمنصة:', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(widget.accountNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF))),
+                      const SizedBox(width: 10),
+                      IconButton(
+                        icon: const Icon(Icons.copy, color: Color(0xFF00A2FF)),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: widget.accountNumber));
+                          showRgbNotificationOverlay(context, 'تم نسخ الرقم بنجاح');
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _senderNumberController,
+              decoration: InputDecoration(
+                labelText: 'رقم الهاتف المرسل أو رقم العملية المرجعي',
+                prefixIcon: const Icon(Icons.numbers, color: Color(0xFF00A2FF)),
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+              ),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'المبلغ المحول ($)',
+                prefixIcon: const Icon(Icons.attach_money, color: Color(0xFF00A2FF)),
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+              ),
+            ),
+            const SizedBox(height: 25),
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                onPressed: _submitPaymentProof,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00A2FF),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                ),
+                child: const Text('تأكيد وإرسال التحويل', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3009,6 +3411,7 @@ class PlatformServicesScreen extends StatefulWidget {
   final bool isDark;
   final String platformName;
   final String platformKey;
+  final String currentUser;
   final double userBalance;
 
   const PlatformServicesScreen({
@@ -3017,7 +3420,8 @@ class PlatformServicesScreen extends StatefulWidget {
     required this.isDark,
     required this.platformName,
     required this.platformKey,
-    this.userBalance = 0.0,
+    required this.currentUser,
+    required this.userBalance,
   });
 
   @override
@@ -3041,26 +3445,25 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
 
     switch (pKey) {
       case 'instagram':
-        if (cat.contains('facebook') || cat.contains('tiktok') || cat.contains('telegram') || cat.contains('twitter') || cat.contains('youtube') || cat.contains('فيسبوك')) return false;
-        return cat.contains('instagram') || name.contains('instagram') || cat.contains('انستجرام') || name.contains('انستغرام') || cat.contains('انستغرام') || cat.contains('انستكرام') || name.contains('انستكرام') || cat.contains('انستا') || name.contains('انستا');
+        if (cat.contains('facebook') || cat.contains('tiktok') || cat.contains('telegram') || cat.contains('twitter') || cat.contains('youtube')) return false;
+        return cat.contains('instagram') || name.contains('instagram') || cat.contains('انستجرام') || name.contains('انستغرام') || cat.contains('انستغرام') || cat.contains('انستكرام') || name.contains('انستكرام') || cat.contains('انستا');
       case 'facebook':
-        if (cat.contains('instagram') || cat.contains('tiktok') || cat.contains('telegram') || cat.contains('twitter')) return false;
+        if (cat.contains('instagram') || cat.contains('tiktok') || cat.contains('telegram')) return false;
         return cat.contains('facebook') || name.contains('facebook') || cat.contains('فيسبوك') || name.contains('فيس بوك');
       case 'tiktok':
         if (cat.contains('instagram') || cat.contains('facebook') || cat.contains('telegram')) return false;
         return cat.contains('tiktok') || name.contains('tiktok') || cat.contains('تيكتوك') || name.contains('تيك توك');
       case 'telegram':
         if (cat.contains('instagram') || cat.contains('facebook') || cat.contains('tiktok')) return false;
-        return cat.contains('telegram') || name.contains('telegram') || cat.contains('تليكرام') || name.contains('تليجرام') || cat.contains('تلغ');
+        return cat.contains('telegram') || name.contains('telegram') || cat.contains('تليكرام') || name.contains('تليجرام');
       case 'twitter':
-        if (cat.contains('instagram') || cat.contains('facebook')) return false;
-        return cat.contains('twitter') || name.contains('twitter') || cat.contains('تويتر') || name.contains('تويتر');
+        return cat.contains('twitter') || name.contains('twitter') || cat.contains('تويتر');
       case 'whatsapp':
-        return cat.contains('whatsapp') || name.contains('whatsapp') || cat.contains('واتساب') || name.contains('وتساب');
+        return cat.contains('whatsapp') || name.contains('whatsapp') || cat.contains('واتساب');
       case 'spotify':
-        return cat.contains('spotify') || name.contains('spotify') || cat.contains('سبوت') || name.contains('سبوت');
+        return cat.contains('spotify') || name.contains('spotify') || cat.contains('سبوت');
       case 'threads':
-        return cat.contains('threads') || name.contains('threads') || cat.contains('ثريدز') || name.contains('ثريد');
+        return cat.contains('threads') || name.contains('threads') || cat.contains('ثريدز');
       default:
         return cat.contains(pKey) || name.contains(pKey);
     }
@@ -3069,68 +3472,48 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
   Future<void> _fetchServices() async {
     try {
       final all = await fetchServicesFromApi();
-      setState(() {
-        services = all.where((s) => _isServiceForPlatform(s, widget.platformKey.toLowerCase())).toList();
-        isLoading = false;
-      });
+      final filtered = all.where((s) => _isServiceForPlatform(s, widget.platformKey)).toList();
+      if (mounted) {
+        setState(() {
+          services = filtered.isNotEmpty ? filtered : all.take(15).toList();
+          isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        errorMessage = e.toString();
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          errorMessage = e.toString();
+          isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      title: 'خدمات ${widget.platformName}',
+      title: widget.platformName,
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: isLoading
           ? const Center(child: RainbowSpinner())
           : errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      'حدث خطأ في جلب البيانات:\n$errorMessage',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.redAccent, fontSize: 16),
-                    ),
-                  ),
-                )
+              ? Center(child: Text('حدث خطأ: $errorMessage'))
               : services.isEmpty
                   ? const Center(child: Text('لا توجد خدمات متاحة حالياً لهذه المنصة'))
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: services.length,
                       itemBuilder: (context, index) {
-                        final item = services[index];
+                        final s = services[index];
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            title: Text(
-                              item.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                'ID: ${item.service} | أدنى: ${item.min} - أقصى: ${item.max}',
-                                style: const TextStyle(color: Colors.grey, fontSize: 12),
-                              ),
-                            ),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                buildPriceDisplay(item.rate),
-                                const Text('لكل 1000', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                              ],
-                            ),
+                            leading: const AppLogoWidget(size: 26),
+                            title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            subtitle: Text('الحد الأدنى: ${s.min} | الأقصى: ${s.max}', style: const TextStyle(fontSize: 12)),
+                            trailing: buildPriceDisplay(s.rate),
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -3138,7 +3521,8 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
                                   builder: (_) => OrderFormScreen(
                                     toggleTheme: widget.toggleTheme,
                                     isDark: widget.isDark,
-                                    service: item,
+                                    service: s,
+                                    currentUser: widget.currentUser,
                                     userBalance: widget.userBalance,
                                   ),
                                 ),
@@ -3152,133 +3536,12 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
   }
 }
 
-// 7. Free Services Screen
-class FreeServicesScreen extends StatefulWidget {
-  final Function(bool) toggleTheme;
-  final bool isDark;
-  final double userBalance;
-
-  const FreeServicesScreen({
-    super.key,
-    required this.toggleTheme,
-    required this.isDark,
-    this.userBalance = 0.0,
-  });
-
-  @override
-  State<FreeServicesScreen> createState() => _FreeServicesScreenState();
-}
-
-class _FreeServicesScreenState extends State<FreeServicesScreen> {
-  List<ServiceModel> freeServicesList = [];
-  bool isLoading = true;
-  String? errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchFreeServices();
-  }
-
-  Future<void> _fetchFreeServices() async {
-    try {
-      final all = await fetchServicesFromApi();
-      setState(() {
-        freeServicesList = all.where((s) {
-          final rateNum = double.tryParse(s.rate) ?? 0.0;
-          final name = s.name.toLowerCase();
-          final cat = s.category.toLowerCase();
-
-          return rateNum == 0.0 ||
-              s.rate == '0' ||
-              s.rate == '0.00' ||
-              name.contains('مجاني') ||
-              name.contains('free') ||
-              cat.contains('مجانيه') ||
-              cat.contains('مجانية');
-        }).toList();
-
-        if (freeServicesList.isEmpty) {
-          freeServicesList = all..sort((a, b) => (double.tryParse(a.rate) ?? 0).compareTo(double.tryParse(b.rate) ?? 0));
-        }
-
-        isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        errorMessage = e.toString();
-        isLoading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BaseScaffold(
-      title: 'الخدمات المجانية',
-      toggleTheme: widget.toggleTheme,
-      isDark: widget.isDark,
-      body: isLoading
-          ? const Center(child: RainbowSpinner())
-          : errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      'حدث خطأ في الاتصال:\n$errorMessage',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.redAccent, fontSize: 16),
-                    ),
-                  ),
-                )
-              : freeServicesList.isEmpty
-                  ? const Center(child: Text('لا توجد خدمات مجانية متاحة حالياً'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: freeServicesList.length,
-                      itemBuilder: (context, index) {
-                        final item = freeServicesList[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                          child: ListTile(
-                            title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Row(
-                              children: [
-                                Text('ID: ${item.service} | '),
-                                buildPriceDisplay(item.rate),
-                              ],
-                            ),
-                            trailing: ElevatedButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => OrderFormScreen(
-                                      toggleTheme: widget.toggleTheme,
-                                      isDark: widget.isDark,
-                                      service: item,
-                                      userBalance: widget.userBalance,
-                                    ),
-                                  ),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
-                              child: const Text('طلب', style: TextStyle(color: Colors.white)),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-    );
-  }
-}
-
-// 8. Order Form Screen
+// 7. Order Form Screen
 class OrderFormScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
   final ServiceModel service;
+  final String currentUser;
   final double userBalance;
 
   const OrderFormScreen({
@@ -3286,7 +3549,8 @@ class OrderFormScreen extends StatefulWidget {
     required this.toggleTheme,
     required this.isDark,
     required this.service,
-    this.userBalance = 0.0,
+    required this.currentUser,
+    required this.userBalance,
   });
 
   @override
@@ -3296,107 +3560,39 @@ class OrderFormScreen extends StatefulWidget {
 class _OrderFormScreenState extends State<OrderFormScreen> {
   final _linkController = TextEditingController();
   final _quantityController = TextEditingController();
-  final _costController = TextEditingController(text: '\$0.00');
-
+  double calculatedCost = 0.0;
   bool isSubmitting = false;
-  bool isLinkInvalid = false;
-  bool isQuantityInvalid = false;
-  String? validationErrorMsg;
 
-  late YoutubePlayerController _youtubeController;
-
-  bool get isInstagramService {
-    final name = widget.service.name.toLowerCase();
-    final cat = widget.service.category.toLowerCase();
-    return name.contains('انستكرام') ||
-        name.contains('انستجرام') ||
-        name.contains('انستقرام') ||
-        name.contains('انستا') ||
-        name.contains('instagram') ||
-        name.contains('instgram') ||
-        cat.contains('انستكرام') ||
-        cat.contains('انستجرام') ||
-        cat.contains('انستقرام') ||
-        cat.contains('انستا') ||
-        cat.contains('instagram') ||
-        cat.contains('instgram');
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    final videoId = YoutubePlayer.convertUrlToId('https://youtu.be/GDlPckoVs2k?si=P5xpiKVCeTZCuCMR') ?? 'GDlPckoVs2k';
-    _youtubeController = YoutubePlayerController(
-      initialVideoId: videoId,
-      flags: const YoutubePlayerFlags(
-        autoPlay: true,
-        mute: false,
-      ),
-    );
-  }
-
-  void _updateCost() {
-    final qty = int.tryParse(_quantityController.text.trim()) ?? 0;
-    final double originalRate = double.tryParse(widget.service.rate) ?? 0.0;
-    final double effectiveRate = math.max(0.0, originalRate - globalDiscount);
-    final double totalCost = (qty / 1000.0) * effectiveRate;
-    _costController.text = '\$${totalCost.toStringAsFixed(3)}';
-  }
-
-  @override
-  void dispose() {
-    _linkController.dispose();
-    _quantityController.dispose();
-    _costController.dispose();
-    _youtubeController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submitOrder() async {
+  void _calculateCost(String val) {
+    final qty = double.tryParse(val) ?? 0.0;
+    final rate = double.tryParse(widget.service.rate) ?? 0.0;
+    double actualRate = rate;
+    if (globalDiscount > 0) {
+      actualRate = math.max(0.0, rate - globalDiscount);
+    }
     setState(() {
-      isLinkInvalid = false;
-      isQuantityInvalid = false;
-      validationErrorMsg = null;
+      calculatedCost = (qty / 1000) * actualRate;
     });
+  }
 
+  void _submitOrder() async {
     final link = _linkController.text.trim();
-    final quantityStr = _quantityController.text.trim();
-    final minVal = int.tryParse(widget.service.min) ?? 0;
-    final maxVal = int.tryParse(widget.service.max) ?? 9999999;
-    final parsedQty = int.tryParse(quantityStr);
+    final qtyStr = _quantityController.text.trim();
+    final qty = int.tryParse(qtyStr) ?? 0;
+    final min = int.tryParse(widget.service.min) ?? 0;
+    final max = int.tryParse(widget.service.max) ?? 100000;
 
-    bool hasError = false;
-
-    if (link.isEmpty) {
-      isLinkInvalid = true;
-      hasError = true;
-    }
-
-    if (quantityStr.isEmpty) {
-      isQuantityInvalid = true;
-      hasError = true;
-    }
-
-    if (hasError) {
-      setState(() {
-        validationErrorMsg = 'مطلوب ملء الحقول المطلوبة';
-      });
+    if (link.isEmpty || qty <= 0) {
+      showCustomAlertDialog(context, title: 'تنبيه', message: 'يرجى كتابة الرابط والكمية المطلوبة بشكل صحيح.');
       return;
     }
 
-    if (parsedQty == null || parsedQty < minVal || parsedQty > maxVal) {
-      setState(() {
-        isQuantityInvalid = true;
-        validationErrorMsg = 'طلبك اقل أو اعلى من الكمية المحددة';
-      });
+    if (qty < min || qty > max) {
+      showCustomAlertDialog(context, title: 'تنبيه', message: 'الكمية يجب أن تكون بين $min و $max.');
       return;
     }
 
-    final double originalRate = double.tryParse(widget.service.rate) ?? 0.0;
-    final double effectiveRate = math.max(0.0, originalRate - globalDiscount);
-    final double totalCost = (parsedQty / 1000.0) * effectiveRate;
-
-    if (totalCost > 0 && totalCost > widget.userBalance) {
+    if (widget.userBalance < calculatedCost) {
       showInsufficientFundsDialog(context);
       return;
     }
@@ -3404,55 +3600,61 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     setState(() => isSubmitting = true);
 
     try {
-      final response = await http.post(
+      final res = await http.post(
         Uri.parse(apiUrl),
         body: {
           'key': apiKey,
           'action': 'add',
           'service': widget.service.service,
           'link': link,
-          'quantity': quantityStr,
+          'quantity': '$qty',
         },
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['order'] != null) {
-          final newOrder = OrderModel(
-            order: data['order'].toString(),
-            status: 'قيد الانتظار',
-            charge: totalCost.toStringAsFixed(2),
-            startCount: '0',
-            remains: quantityStr,
-            link: link,
-            serviceName: widget.service.name,
-            date: DateTime.now().toString().split('.')[0],
-            createdAt: DateTime.now(),
-          );
+      final data = json.decode(res.body);
 
-          userOrdersStore.insert(0, newOrder);
-          await saveOrdersToStorage();
+      if (res.statusCode == 200 && data.containsKey('order')) {
+        final orderId = data['order'].toString();
 
-          if (!mounted) return;
-          addAppNotification(
-            '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
-            'تم ارسال طلبك الان وتم خصم \$${totalCost.toStringAsFixed(2)}\$ دولار',
-            context,
-          );
-          Navigator.pop(context);
-        } else {
-          final err = data['error'] ?? 'حدث خطأ أثناء تنفيذ الطلب';
-          if (err.toString().toLowerCase().contains('balance') || err.toString().contains('رصيد')) {
-            showInsufficientFundsDialog(context);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
-          }
-        }
+        // Deduct from APP balance for this user
+        final newBal = math.max(0.0, widget.userBalance - calculatedCost);
+        await setUserBalance(widget.currentUser, newBal);
+
+        final curSp = await getUserSpending(widget.currentUser);
+        await setUserSpending(widget.currentUser, curSp + calculatedCost);
+
+        // Store Order locally under this user
+        final newOrder = OrderModel(
+          order: orderId,
+          status: 'قيد الانتظار',
+          charge: calculatedCost.toStringAsFixed(2),
+          startCount: '0',
+          remains: '$qty',
+          link: link,
+          serviceName: widget.service.name,
+          date: DateTime.now().toString().split('.')[0],
+        );
+
+        final userOrds = await getUserOrders(widget.currentUser);
+        userOrds.insert(0, newOrder);
+        await saveUserOrders(widget.currentUser, userOrds);
+
+        if (!mounted) return;
+        addAppNotification(
+          '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
+          'تم إرسال طلبك بنجاح! رقم الطلب: $orderId',
+          context,
+        );
+
+        Navigator.pop(context);
+      } else {
+        if (!mounted) return;
+        showCustomAlertDialog(context, title: 'خطأ', message: data['error'] ?? 'تعذر إرسال الطلب، يرجى المحاولة لاحقاً.');
       }
-    } catch (_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('فشل الاتصال بالسيرفر')),
-      );
+    } catch (e) {
+      if (mounted) {
+        showCustomAlertDialog(context, title: 'خطأ', message: 'حدث خطأ في الاتصال بالسيرفر.');
+      }
     } finally {
       if (mounted) setState(() => isSubmitting = false);
     }
@@ -3461,7 +3663,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      title: 'إنشاء طلب جديد',
+      title: 'طلب الخدمة',
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: SingleChildScrollView(
@@ -3469,131 +3671,87 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.service.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Text('السعر لكل 1000: '),
-                        buildPriceDisplay(widget.service.rate),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text('الحد الأدنى: ${widget.service.min} | الحد الأقصى: ${widget.service.max}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                  ],
-                ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const AppLogoWidget(size: 26),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.service.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('الفئة: ${widget.service.category}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('السعر لكل 1000:', style: TextStyle(fontSize: 13)),
+                      buildPriceDisplay(widget.service.rate),
+                    ],
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 20),
+            const Text('رابط الحساب أو المنشور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 6),
             TextField(
               controller: _linkController,
               decoration: InputDecoration(
-                labelText: 'رابط الحساب / المنشور',
+                hintText: 'https://...',
                 prefixIcon: const Icon(Icons.link, color: Color(0xFF00A2FF)),
-                filled: true,
-                fillColor: isLinkInvalid ? Colors.red.withOpacity(0.15) : Theme.of(context).cardColor,
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: isLinkInvalid ? const BorderSide(color: Colors.red, width: 2) : BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: isLinkInvalid ? const BorderSide(color: Colors.red, width: 2) : const BorderSide(color: Color(0xFF00A2FF), width: 2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: _quantityController,
-              keyboardType: TextInputType.number,
-              onChanged: (_) => _updateCost(),
-              decoration: InputDecoration(
-                labelText: 'الكمية',
-                prefixIcon: const Icon(Icons.numbers, color: Color(0xFF00A2FF)),
-                filled: true,
-                fillColor: isQuantityInvalid ? Colors.red.withOpacity(0.15) : Theme.of(context).cardColor,
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: isQuantityInvalid ? const BorderSide(color: Colors.red, width: 2) : BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: isQuantityInvalid ? const BorderSide(color: Colors.red, width: 2) : const BorderSide(color: Color(0xFF00A2FF), width: 2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: _costController,
-              readOnly: true,
-              enabled: false,
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-              decoration: InputDecoration(
-                labelText: 'التكلفة الإجمالية للطلب',
-                prefixIcon: const Icon(Icons.attach_money, color: Colors.green),
                 filled: true,
                 fillColor: Theme.of(context).cardColor,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
               ),
             ),
-            if (validationErrorMsg != null) ...[
-              const SizedBox(height: 12),
-              Center(
-                child: Text(
-                  validationErrorMsg!,
-                  style: const TextStyle(color: Colors.redAccent, fontSize: 14, fontWeight: FontWeight.bold),
-                ),
+            const SizedBox(height: 16),
+            const Text('الكمية المطلوبة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _quantityController,
+              keyboardType: TextInputType.number,
+              onChanged: _calculateCost,
+              decoration: InputDecoration(
+                hintText: 'الحد الأدنى ${widget.service.min} - الأقصى ${widget.service.max}',
+                prefixIcon: const Icon(Icons.format_number_09, color: Color(0xFF00A2FF)),
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
               ),
-            ],
-            if (isInstagramService) ...[
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.amber, width: 1.5),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        AnimatedWarningIcon(),
-                        SizedBox(width: 8),
-                        Text(
-                          'تنبيه',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'تنبيه: يجب أن يكون حسابك عام وليس خاص، ويرجى إيقاف زر المراجعة أو التمييز كما هو موضح في الفيديو أسفله.',
-                      style: TextStyle(fontSize: 13, height: 1.5, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 15),
-              ClipRRect(
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00A2FF).withOpacity(0.12),
                 borderRadius: BorderRadius.circular(15),
-                child: YoutubePlayer(
-                  controller: _youtubeController,
-                  showVideoProgressIndicator: true,
-                  progressIndicatorColor: const Color(0xFF00A2FF),
-                ),
               ),
-            ],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('التكلفة الإجمالية:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(
+                    '\$${calculatedCost.toStringAsFixed(3)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Color(0xFF00A2FF)),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 25),
             SizedBox(
               width: double.infinity,
@@ -3606,7 +3764,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                 ),
                 child: isSubmitting
                     ? const RainbowSpinner()
-                    : const Text('ارسال الطلب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text('تأكيد وإرسال الطلب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ],
@@ -3616,93 +3774,35 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   }
 }
 
-// 9. Order History Screen
+// 8. Order History Screen
 class OrderHistoryScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
+  final String currentUser;
 
-  const OrderHistoryScreen({super.key, required this.toggleTheme, required this.isDark});
+  const OrderHistoryScreen({super.key, required this.toggleTheme, required this.isDark, required this.currentUser});
 
   @override
   State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
 }
 
 class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
-  bool isRefreshing = false;
+  List<OrderModel> orders = [];
+  bool isLoading = true;
 
-  String _translateStatus(String status) {
-    final lower = status.toLowerCase();
-    if (lower.contains('pending')) return 'قيد الانتظار';
-    if (lower.contains('processing') || lower.contains('in progress')) return 'قيد التنفيذ';
-    if (lower.contains('completed')) return 'مكتمل';
-    if (lower.contains('partial')) return 'مكتمل جزئياً';
-    if (lower.contains('canceled') || lower.contains('cancelled')) return 'ملغى';
-    return status;
+  @override
+  void initState() {
+    super.initState();
+    _loadUserOrders();
   }
 
-  Color _getStatusColor(String status) {
-    final translated = _translateStatus(status);
-    if (translated == 'قيد الانتظار') return Colors.orange;
-    if (translated == 'قيد التنفيذ') return Colors.blue;
-    if (translated == 'مكتمل') return Colors.green;
-    if (translated == 'ملغى') return Colors.red;
-    return Colors.purple;
-  }
-
-  String _getFormattedElapsedTime(DateTime createdAt) {
-    final diff = DateTime.now().difference(createdAt);
-    int hours = diff.inHours;
-    int minutes = diff.inMinutes % 60;
-    int seconds = diff.inSeconds % 60;
-
-    List<String> parts = [];
-    if (hours > 0) parts.add('$hours ساعة');
-    if (minutes > 0) parts.add('$minutes دقيقة');
-    parts.add('$seconds ثانية');
-
-    return parts.join(' ');
-  }
-
-  Future<void> _refreshOrders() async {
-    setState(() => isRefreshing = true);
-
-    try {
-      for (var order in userOrdersStore) {
-        final oldStatus = order.status;
-        final res = await http.post(
-          Uri.parse(apiUrl),
-          body: {
-            'key': apiKey,
-            'action': 'status',
-            'order': order.order,
-          },
-        );
-
-        if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          if (data['status'] != null) {
-            final newStatus = data['status'].toString();
-            order.status = newStatus;
-
-            if (_translateStatus(oldStatus) != 'مكتمل' && _translateStatus(newStatus) == 'مكتمل') {
-              final timeStr = _getFormattedElapsedTime(order.createdAt);
-              if (mounted) {
-                addAppNotification(
-                  '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
-                  'تم اكتمال طلبك الذي طلبته قبل: $timeStr ✔',
-                  context,
-                );
-              }
-            }
-          }
-        }
-      }
-      await saveOrdersToStorage();
-    } catch (_) {
-    } finally {
-      if (mounted) {
-        setState(() => isRefreshing = false);
-      }
+  Future<void> _loadUserOrders() async {
+    final userOrds = await getUserOrders(widget.currentUser);
+    if (mounted) {
+      setState(() {
+        orders = userOrds;
+        isLoading = false;
+      });
     }
   }
 
@@ -3712,56 +3812,119 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       title: 'سجل الطلبات',
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
-      body: RefreshIndicator(
-        onRefresh: _refreshOrders,
-        color: const Color(0xFF00A2FF),
-        child: userOrdersStore.isEmpty
-            ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 200),
-                  Center(child: Text('لا توجد طلبات سابقة')),
-                ],
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                physics: const AlwaysScrollableScrollPhysics(),
-                itemCount: userOrdersStore.length,
-                itemBuilder: (context, index) {
-                  final order = userOrdersStore[index];
-                  final statusTxt = _translateStatus(order.status);
-                  final statusCol = _getStatusColor(order.status);
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    child: ListTile(
-                      title: Text(order.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text('رقم الطلب: ${order.order}'),
-                          Text('الرابط: ${order.link}'),
-                          Text('التاريخ: ${order.date}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                        ],
+      body: isLoading
+          ? const Center(child: RainbowSpinner())
+          : orders.isEmpty
+              ? const Center(child: Text('لا توجد طلبات سابقة لهذا الحساب'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: orders.length,
+                  itemBuilder: (context, index) {
+                    final o = orders[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('طلب #${o.order}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00A2FF))),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(o.status, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(o.serviceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            const SizedBox(height: 6),
+                            Text('الرابط: ${o.link}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('التكلفة: \$${o.charge}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                                Text(o.date, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: statusCol.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: statusCol.withOpacity(0.4)),
-                        ),
-                        child: Text(
-                          statusTxt,
-                          style: TextStyle(color: statusCol, fontWeight: FontWeight.bold, fontSize: 12),
-                        ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+// 9. Free Services Screen
+class FreeServicesScreen extends StatelessWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+  final String currentUser;
+  final double userBalance;
+
+  const FreeServicesScreen({
+    super.key,
+    required this.toggleTheme,
+    required this.isDark,
+    required this.currentUser,
+    required this.userBalance,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final freeServices = [
+      ServiceModel(service: '101', name: '🎁 100 مشاهدة انستكرام مجاناً', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+      ServiceModel(service: '102', name: '🎁 50 لايك تيك توك تجريبي', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '50', max: '50'),
+      ServiceModel(service: '103', name: '🎁 100 مشاهدة فيديو تليجرام', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+    ];
+
+    return BaseScaffold(
+      title: 'خدمات مجانية',
+      toggleTheme: toggleTheme,
+      isDark: isDark,
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: freeServices.length,
+        itemBuilder: (context, index) {
+          final s = freeServices[index];
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: ListTile(
+              leading: const AppLogoWidget(size: 26),
+              title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              subtitle: const Text('مجاني بالكامل بدون خصم رصيد', style: TextStyle(color: Colors.green, fontSize: 12)),
+              trailing: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => OrderFormScreen(
+                        toggleTheme: toggleTheme,
+                        isDark: isDark,
+                        service: s,
+                        currentUser: currentUser,
+                        userBalance: userBalance,
                       ),
                     ),
                   );
                 },
+                child: const Text('احصل الآن', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
+            ),
+          );
+        },
       ),
     );
   }
