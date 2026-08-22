@@ -23,7 +23,7 @@ jobs:
         with:
           channel: 'stable'
 
-      # إنشاء ملف pubspec.yaml وتضمين مكتبات الصور والشبكة وأيقونات التطبيقات
+      # إنشاء ملف pubspec.yaml وتضمين المكتبات الأساسية فقط
       - name: Create pubspec.yaml automatically
         run: |
           cat <<'EOF' > pubspec.yaml
@@ -41,8 +41,6 @@ jobs:
             http: ^1.2.0
             shared_preferences: ^2.2.2
             cupertino_icons: ^1.0.8
-            cached_network_image: ^3.3.1
-            flutter_svg: ^2.0.10
 
           dev_dependencies:
             flutter_test:
