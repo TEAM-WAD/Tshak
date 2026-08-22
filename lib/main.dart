@@ -3883,9 +3883,12 @@ class FreeServicesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final freeServices = [
-      ServiceModel(service: '101', name: '🎁 100 مشاهدة انستكرام مجاناً', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
-      ServiceModel(service: '102', name: '🎁 50 لايك تيك توك تجريبي', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '50', max: '50'),
-      ServiceModel(service: '103', name: '🎁 100 مشاهدة فيديو تليجرام', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+      ServiceModel(service: '2818', name: 'مشاهدات انستكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+      ServiceModel(service: '3268', name: 'مشاهدات تيك توك مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+      ServiceModel(service: '3408', name: 'مشاهدات بوست تليكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '10', max: '100'),
+      ServiceModel(service: '3060', name: 'اعضاء تليكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '10', max: '50'),
+      ServiceModel(service: '3396', name: 'لايكات انستكرام بوست او ريلز مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '50', max: '50'),
+      ServiceModel(service: '3485', name: 'مشاهدات ستوري انستكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
     ];
 
     return BaseScaffold(
