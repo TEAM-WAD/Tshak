@@ -3317,7 +3317,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
               ),
               child: const Center(
                 child: Text(
-                  '1$=1$ سد بسد بدون عموله زايده',
+                  '1\$=1\$ سد بسد بدون عموله زايده',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ),
@@ -3378,7 +3378,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
               controller: _amountController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: 'المبلغ المحول ($)',
+                labelText: 'المبلغ المحول (\$)',
                 prefixIcon: const Icon(Icons.attach_money, color: Color(0xFF00A2FF)),
                 filled: true,
                 fillColor: Theme.of(context).cardColor,
