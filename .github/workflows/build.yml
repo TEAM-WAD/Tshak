@@ -75,14 +75,13 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      # إصلاح ملف ProGuard للمكتبات المنسخة تلقائياً
+      - name: Fix Deprecated Proguard Rules
+        run: |
+          find ~/.pub-cache/ -name "build.gradle" -exec sed -i 's/proguard-android.txt/proguard-android-optimize.txt/g' {} +
+
       - name: Build Release APK
         run: flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
