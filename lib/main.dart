@@ -28,7 +28,7 @@ class _FollowerXAppState extends State<FollowerXApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Follower X',
+      title: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
       debugShowCheckedModeBanner: false,
       themeMode: _themeMode,
       theme: ThemeData.light().copyWith(
@@ -102,6 +102,7 @@ class OrderModel {
   final String link;
   final String serviceName;
   final String date;
+  final DateTime createdAt;
 
   OrderModel({
     required this.order,
@@ -112,7 +113,8 @@ class OrderModel {
     required this.link,
     required this.serviceName,
     required this.date,
-  });
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
         'order': order,
@@ -123,6 +125,7 @@ class OrderModel {
         'link': link,
         'serviceName': serviceName,
         'date': date,
+        'createdAt': createdAt.toIso8601String(),
       };
 
   factory OrderModel.fromJson(Map<String, dynamic> json) => OrderModel(
@@ -134,6 +137,7 @@ class OrderModel {
         link: json['link'] ?? '',
         serviceName: json['serviceName'] ?? '',
         date: json['date'] ?? '',
+        createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt']) : DateTime.now(),
       );
 }
 
@@ -235,7 +239,7 @@ class _RotatingSettingsEmojiState extends State<RotatingSettingsEmoji> with Sing
   }
 }
 
-// Dynamic Glowing Border Box Widget
+// Dynamic Glowing Border Box Widget with Float Motion (Replacing Pulse)
 class DynamicBorderTitleBox extends StatefulWidget {
   final String text;
   final bool isLarge;
@@ -248,8 +252,8 @@ class DynamicBorderTitleBox extends StatefulWidget {
 
 class _DynamicBorderTitleBoxState extends State<DynamicBorderTitleBox> with TickerProviderStateMixin {
   late AnimationController _colorController;
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  late AnimationController _floatController;
+  late Animation<Offset> _floatAnimation;
 
   @override
   void initState() {
@@ -259,20 +263,21 @@ class _DynamicBorderTitleBoxState extends State<DynamicBorderTitleBox> with Tick
       duration: const Duration(seconds: 4),
     )..repeat();
 
-    _pulseController = AnimationController(
+    _floatController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 0.98, end: 1.03).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
+    _floatAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.04),
+      end: const Offset(0, 0.04),
+    ).animate(CurvedAnimation(parent: _floatController, curve: Curves.easeInOut));
   }
 
   @override
   void dispose() {
     _colorController.dispose();
-    _pulseController.dispose();
+    _floatController.dispose();
     super.dispose();
   }
 
@@ -284,8 +289,8 @@ class _DynamicBorderTitleBoxState extends State<DynamicBorderTitleBox> with Tick
         final val = _colorController.value;
         final borderColor = HSLColor.fromAHSL(1.0, (val * 360) % 360, 0.9, 0.6).toColor();
 
-        return ScaleTransition(
-          scale: _pulseAnimation,
+        return SlideTransition(
+          position: _floatAnimation,
           child: Container(
             padding: EdgeInsets.symmetric(
               horizontal: widget.isLarge ? 20 : 14,
@@ -320,7 +325,7 @@ class _DynamicBorderTitleBoxState extends State<DynamicBorderTitleBox> with Tick
   }
 }
 
-// Wave Dot Loading Animated Widget
+// Wave Dot Loading Animated Widget (Exclusively for Splash Screen)
 class WaveLoadingWidget extends StatefulWidget {
   const WaveLoadingWidget({super.key});
 
@@ -445,7 +450,7 @@ class _RainbowSpinnerState extends State<RainbowSpinner> with SingleTickerProvid
   }
 }
 
-// Global Top Animated Full Width Notification Popup
+// Global Top Animated Notification Overlay
 void showRgbNotificationOverlay(BuildContext context, String message) {
   final overlayState = Overlay.of(context);
   late OverlayEntry overlayEntry;
@@ -588,7 +593,101 @@ class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with Tic
   }
 }
 
-// Base Scaffold Wrapper with Custom Animated Title
+// Dialog: Insufficient Funds Alert
+void showInsufficientFundsDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (ctx) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+            SizedBox(width: 10),
+            Text('تنبيه هام', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: const Text(
+          'عذراً عزيزي المستخدم، لا تمتلك في حسابك رصيد كافي لطلب هذه الخدمة.\n\nيرجى إعادة شحن حسابك عبر طرق الدفع المتاحة لكي تمكن من الاستمرار في تنفيذ طلبك بنجاح.',
+          style: TextStyle(fontSize: 15, height: 1.5),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00A2FF),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AddFundsScreen(
+                    toggleTheme: (bool val) {},
+                    isDark: Theme.of(context).brightness == Brightness.dark,
+                  ),
+                ),
+              );
+            },
+            child: const Text('شحن الحساب الآن', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Dialog: About Us
+void showAboutUsDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (ctx) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Color(0xFF00A2FF), size: 28),
+            SizedBox(width: 10),
+            Text('من نحن', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'أهلاً بك في تطبيق 𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆!',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF00A2FF)),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'نحن المنصة الأولى والأسرع في تقديم خدمات تسويق وتنمية حسابات مواقع التواصل الاجتماعي بأعلى جودة وأفضل الأسعار المنافسة.\n\nنهدف دائماً إلى توفير أفضل تجربة للمستخدم مع ضمان السرعة في التنفيذ والدعم الفني المستمر على مدار الساعة لخدمتكم بشكل ممتاز.',
+                style: TextStyle(fontSize: 14, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إغلاق', style: TextStyle(color: Color(0xFF00A2FF), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Base Scaffold Wrapper with Title Changed to "𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆"
 class BaseScaffold extends StatelessWidget {
   final String title;
   final Widget body;
@@ -668,7 +767,7 @@ class BaseScaffold extends StatelessWidget {
           elevation: 0,
           centerTitle: true,
           title: showHeaderTitle
-              ? const DynamicBorderTitleBox(text: '𝐹𝑜𝓁𝓁𝑜𝓌𝑒𝓇 𝓍 - فالوير اکـس', isLarge: true)
+              ? const DynamicBorderTitleBox(text: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', isLarge: true)
               : DynamicBorderTitleBox(text: title),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 22),
@@ -703,7 +802,7 @@ class BaseScaffold extends StatelessWidget {
                     ),
                     SizedBox(height: 10),
                     Text(
-                      'Follower X',
+                      '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
                       style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -713,6 +812,34 @@ class BaseScaffold extends StatelessWidget {
                 leading: const Icon(Icons.home, color: Color(0xFF00A2FF)),
                 title: const Text('الرئيسية'),
                 onTap: () => Navigator.pop(context),
+              ),
+              ListTile(
+                leading: const Icon(Icons.info, color: Color(0xFF00A2FF)),
+                title: const Text('من نحن'),
+                onTap: () {
+                  Navigator.pop(context);
+                  showAboutUsDialog(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.headset_mic, color: Color(0xFF00A2FF)),
+                title: const Text('الدعم الفني'),
+                onTap: () {
+                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    builder: (c) => Directionality(
+                      textDirection: TextDirection.rtl,
+                      child: AlertDialog(
+                        title: const Text('الدعم الفني'),
+                        content: const Text('للحصول على المساعدة تواصل معنا عبر واتساب أو تليجرام الدعم الفني المباشر.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(c), child: const Text('تم')),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
               ListTile(
                 leading: const Text('⚙️', style: TextStyle(fontSize: 20)),
@@ -981,7 +1108,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      title: '𝐹𝑜𝓁𝓁𝑜𝓌𝑒𝓇 𝓍 - فالوير اکـس',
+      title: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆',
       showHeaderTitle: true,
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
@@ -1018,6 +1145,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           builder: (_) => FreeServicesScreen(
                             toggleTheme: widget.toggleTheme,
                             isDark: widget.isDark,
+                            userBalance: double.tryParse(balance) ?? 0.0,
                           ),
                         ),
                       ).then((_) => setState(() {}));
@@ -1115,6 +1243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               toggleTheme: widget.toggleTheme,
                               isDark: widget.isDark,
                               service: s,
+                              userBalance: double.tryParse(balance) ?? 0.0,
                             ),
                           ),
                         ).then((_) => setState(() {}));
@@ -1262,6 +1391,7 @@ class _HomeScreenState extends State<HomeScreen> {
               isDark: widget.isDark,
               platformName: platform['name'] as String,
               platformKey: platform['key'] as String,
+              userBalance: double.tryParse(balance) ?? 0.0,
             ),
           ),
         ).then((_) => setState(() {}));
@@ -1403,6 +1533,7 @@ class PlatformServicesScreen extends StatefulWidget {
   final bool isDark;
   final String platformName;
   final String platformKey;
+  final double userBalance;
 
   const PlatformServicesScreen({
     super.key,
@@ -1410,6 +1541,7 @@ class PlatformServicesScreen extends StatefulWidget {
     required this.isDark,
     required this.platformName,
     required this.platformKey,
+    this.userBalance = 0.0,
   });
 
   @override
@@ -1480,7 +1612,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: isLoading
-          ? const Center(child: WaveLoadingWidget())
+          ? const Center(child: RainbowSpinner())
           : errorMessage != null
               ? Center(
                   child: Padding(
@@ -1534,6 +1666,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
                                     toggleTheme: widget.toggleTheme,
                                     isDark: widget.isDark,
                                     service: item,
+                                    userBalance: widget.userBalance,
                                   ),
                                 ),
                               );
@@ -1550,11 +1683,13 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
 class FreeServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
+  final double userBalance;
 
   const FreeServicesScreen({
     super.key,
     required this.toggleTheme,
     required this.isDark,
+    this.userBalance = 0.0,
   });
 
   @override
@@ -1611,7 +1746,7 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
       toggleTheme: widget.toggleTheme,
       isDark: widget.isDark,
       body: isLoading
-          ? const Center(child: WaveLoadingWidget())
+          ? const Center(child: RainbowSpinner())
           : errorMessage != null
               ? Center(
                   child: Padding(
@@ -1645,6 +1780,7 @@ class _FreeServicesScreenState extends State<FreeServicesScreen> {
                                       toggleTheme: widget.toggleTheme,
                                       isDark: widget.isDark,
                                       service: item,
+                                      userBalance: widget.userBalance,
                                     ),
                                   ),
                                 );
@@ -1665,12 +1801,14 @@ class OrderFormScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
   final ServiceModel service;
+  final double userBalance;
 
   const OrderFormScreen({
     super.key,
     required this.toggleTheme,
     required this.isDark,
     required this.service,
+    this.userBalance = 0.0,
   });
 
   @override
@@ -1726,6 +1864,16 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       return;
     }
 
+    // Calculate total order price
+    final double ratePer1000 = double.tryParse(widget.service.rate) ?? 0.0;
+    final double totalCost = (parsedQty / 1000.0) * ratePer1000;
+
+    // Check balance for paid services
+    if (totalCost > 0 && totalCost > widget.userBalance) {
+      showInsufficientFundsDialog(context);
+      return;
+    }
+
     setState(() => isSubmitting = true);
 
     try {
@@ -1746,23 +1894,31 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           final newOrder = OrderModel(
             order: data['order'].toString(),
             status: 'قيد الانتظار',
-            charge: '0.00',
+            charge: totalCost.toStringAsFixed(2),
             startCount: '0',
             remains: quantityStr,
             link: link,
             serviceName: widget.service.name,
             date: DateTime.now().toString().split('.')[0],
+            createdAt: DateTime.now(),
           );
 
           userOrdersStore.insert(0, newOrder);
           await saveOrdersToStorage();
 
           if (!mounted) return;
-          showRgbNotificationOverlay(context, 'تم اكتمال طلبك بنجاح الان ✔');
+          showRgbNotificationOverlay(
+            context,
+            'تم ارسال طلبك الان وتم خصم \$${totalCost.toStringAsFixed(2)}\$ دولار',
+          );
           Navigator.pop(context);
         } else {
           final err = data['error'] ?? 'حدث خطأ أثناء تنفيذ الطلب';
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+          if (err.toString().toLowerCase().contains('balance') || err.toString().contains('رصيد')) {
+            showInsufficientFundsDialog(context);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+          }
         }
       }
     } catch (_) {
@@ -1900,11 +2056,26 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     return Colors.purple;
   }
 
+  String _getFormattedElapsedTime(DateTime createdAt) {
+    final diff = DateTime.now().difference(createdAt);
+    int hours = diff.inHours;
+    int minutes = diff.inMinutes % 60;
+    int seconds = diff.inSeconds % 60;
+
+    List<String> parts = [];
+    if (hours > 0) parts.add('$hours ساعة');
+    if (minutes > 0) parts.add('$minutes دقيقة');
+    parts.add('$seconds ثانية');
+
+    return parts.join(' ');
+  }
+
   Future<void> _refreshOrders() async {
     setState(() => isRefreshing = true);
 
     try {
       for (var order in userOrdersStore) {
+        final oldStatus = order.status;
         final res = await http.post(
           Uri.parse(apiUrl),
           body: {
@@ -1917,7 +2088,19 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         if (res.statusCode == 200) {
           final data = json.decode(res.body);
           if (data['status'] != null) {
-            order.status = data['status'].toString();
+            final newStatus = data['status'].toString();
+            order.status = newStatus;
+
+            // Trigger completion pop-up if newly completed
+            if (_translateStatus(oldStatus) != 'مكتمل' && _translateStatus(newStatus) == 'مكتمل') {
+              final timeStr = _getFormattedElapsedTime(order.createdAt);
+              if (mounted) {
+                showRgbNotificationOverlay(
+                  context,
+                  'تم اكتمال طلبك الذي طلبته قبل: $timeStr ✔',
+                );
+              }
+            }
           }
         }
       }
