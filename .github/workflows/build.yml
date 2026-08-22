@@ -41,6 +41,7 @@ jobs:
             http: ^1.2.0
             shared_preferences: ^2.2.2
             cupertino_icons: ^1.0.8
+            youtube_player_flutter: ^9.0.1
 
           dev_dependencies:
             flutter_test:
@@ -76,6 +77,12 @@ jobs:
 
       - name: Build Release APK
         run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
