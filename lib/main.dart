@@ -60,6 +60,55 @@ class _FollowerXAppState extends State<FollowerXApp> {
 const String apiUrl = 'https://ylafollow.com/api/v2';
 const String apiKey = '2ff0c9c3dbf8db742196dd1d4215bbe2';
 
+// User Account Model & Persistence Helpers
+class UserAccountModel {
+  final String username;
+  final String email;
+  final String password;
+
+  UserAccountModel({required this.username, required this.email, required this.password});
+
+  Map<String, dynamic> toJson() => {
+        'username': username,
+        'email': email,
+        'password': password,
+      };
+
+  factory UserAccountModel.fromJson(Map<String, dynamic> json) => UserAccountModel(
+        username: json['username'] ?? '',
+        email: json['email'] ?? '',
+        password: json['password'] ?? '',
+      );
+}
+
+Future<List<UserAccountModel>> getUsersFromStorage() async {
+  final prefs = await SharedPreferences.getInstance();
+  final List<String>? encoded = prefs.getStringList('app_users_list');
+  if (encoded != null) {
+    return encoded.map((item) => UserAccountModel.fromJson(json.decode(item))).toList();
+  }
+  return [];
+}
+
+Future<void> saveUserAccount(UserAccountModel user) async {
+  final prefs = await SharedPreferences.getInstance();
+  List<UserAccountModel> users = await getUsersFromStorage();
+  users.add(user);
+  final List<String> encoded = users.map((u) => json.encode(u.toJson())).toList();
+  await prefs.setStringList('app_users_list', encoded);
+  await prefs.setString('active_logged_username', user.username);
+}
+
+Future<String?> getActiveLoggedUser() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('active_logged_username');
+}
+
+Future<void> logoutActiveUser() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('active_logged_username');
+}
+
 // Models
 class ServiceModel {
   final String service;
@@ -194,6 +243,246 @@ Future<void> loadOrdersFromStorage() async {
   }
 }
 
+// Puzzle Captcha Dialog Widget
+class PuzzleCaptchaDialog extends StatefulWidget {
+  final String imageUrl;
+  final VoidCallback onSuccess;
+
+  const PuzzleCaptchaDialog({
+    super.key,
+    this.imageUrl = 'https://picsum.photos/400/200',
+    required this.onSuccess,
+  });
+
+  static void show(BuildContext context, {required VoidCallback onSuccess}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PuzzleCaptchaDialog(onSuccess: onSuccess),
+    );
+  }
+
+  @override
+  State<PuzzleCaptchaDialog> createState() => _PuzzleCaptchaDialogState();
+}
+
+class _PuzzleCaptchaDialogState extends State<PuzzleCaptchaDialog> {
+  double _sliderValue = 0.0;
+  late double _targetX;
+  late double _targetY;
+  final double _pieceSize = 50.0;
+  bool _isError = false;
+  bool _isSuccess = false;
+  String _message = 'اسحب الشريط لوضع المثلث في المكان الصحيح';
+
+  @override
+  void initState() {
+    super.initState();
+    _generateRandomTarget();
+  }
+
+  void _generateRandomTarget() {
+    final random = math.Random();
+    _targetX = 0.45 + random.nextDouble() * 0.4;
+    _targetY = 0.2 + random.nextDouble() * 0.5;
+    _sliderValue = 0.0;
+    _isError = false;
+    _isSuccess = false;
+  }
+
+  void _checkVerification() {
+    const double tolerance = 0.05;
+    final double diff = (_sliderValue - _targetX).abs();
+
+    if (diff <= tolerance) {
+      setState(() {
+        _isSuccess = true;
+        _isError = false;
+        _message = 'تم التحقق بنجاح! ✔️';
+      });
+      Future.delayed(const Duration(milliseconds: 600), () {
+        Navigator.pop(context);
+        widget.onSuccess();
+      });
+    } else {
+      setState(() {
+        _isError = true;
+        _message = 'خطأ! أعد المحاولة ❌';
+      });
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          setState(() {
+            _sliderValue = 0.0;
+            _isError = false;
+            _message = 'اسحب الشريط لوضع المثلث في المكان الصحيح';
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'أكمل اختبار الأمان',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final height = width * 0.5;
+
+                final targetXPx = _targetX * (width - _pieceSize);
+                final targetYPx = _targetY * (height - _pieceSize);
+                final currentXPx = _sliderValue * (width - _pieceSize);
+
+                return Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        widget.imageUrl,
+                        width: width,
+                        height: height,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: width,
+                          height: height,
+                          color: Colors.blueGrey,
+                          child: const Icon(Icons.image, size: 50, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: targetXPx,
+                      top: targetYPx,
+                      child: ClipPath(
+                        clipper: TriangleClipper(),
+                        child: Container(
+                          width: _pieceSize,
+                          height: _pieceSize,
+                          color: Colors.black.withOpacity(0.65),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: currentXPx,
+                      top: targetYPx,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                              color: _isError ? Colors.red : (_isSuccess ? Colors.green : Colors.black45),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            )
+                          ],
+                        ),
+                        child: ClipPath(
+                          clipper: TriangleClipper(),
+                          child: Container(
+                            width: _pieceSize,
+                            height: _pieceSize,
+                            color: Colors.white,
+                            child: Stack(
+                              children: [
+                                Positioned(
+                                  left: -targetXPx,
+                                  top: -targetYPx,
+                                  child: Image.network(
+                                    widget.imageUrl,
+                                    width: width,
+                                    height: height,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      width: width,
+                                      height: height,
+                                      color: Colors.blueAccent,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 15),
+            Text(
+              _message,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: _isError ? Colors.red : (_isSuccess ? Colors.green : Colors.grey[700]),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: _isError ? Colors.red : (_isSuccess ? Colors.green : const Color(0xFF00A2FF)),
+                thumbColor: _isError ? Colors.red : (_isSuccess ? Colors.green : const Color(0xFF00A2FF)),
+                overlayColor: const Color(0xFF00A2FF).withOpacity(0.2),
+              ),
+              child: Slider(
+                value: _sliderValue,
+                onChanged: (_isError || _isSuccess)
+                    ? null
+                    : (val) {
+                        setState(() {
+                          _sliderValue = val;
+                        });
+                      },
+                onChangeEnd: (_) {
+                  if (!_isSuccess && !_isError) {
+                    _checkVerification();
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Color(0xFF00A2FF)),
+            onPressed: _generateRandomTarget,
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class TriangleClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.moveTo(size.width / 2, 0);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
 // Custom Rotating Settings Button Component
 class RotatingSettingsEmoji extends StatefulWidget {
   final VoidCallback onTap;
@@ -239,7 +528,7 @@ class _RotatingSettingsEmojiState extends State<RotatingSettingsEmoji> with Sing
   }
 }
 
-// Dynamic Glowing Border Box Widget with Float Motion (Replacing Pulse)
+// Dynamic Glowing Border Box Widget
 class DynamicBorderTitleBox extends StatefulWidget {
   final String text;
   final bool isLarge;
@@ -325,7 +614,7 @@ class _DynamicBorderTitleBoxState extends State<DynamicBorderTitleBox> with Tick
   }
 }
 
-// Wave Dot Loading Animated Widget (Exclusively for Splash Screen)
+// Wave Dot Loading Animated Widget
 class WaveLoadingWidget extends StatefulWidget {
   const WaveLoadingWidget({super.key});
 
@@ -593,6 +882,41 @@ class _RgbNotificationWidgetState extends State<_RgbNotificationWidget> with Tic
   }
 }
 
+// Dialog: Custom Styled Alert Popup
+void showCustomAlertDialog(BuildContext context, {required String title, required String message, IconData icon = Icons.info_outline, Color iconColor = Colors.orangeAccent}) {
+  showDialog(
+    context: context,
+    builder: (ctx) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 28),
+            const SizedBox(width: 10),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00A2FF),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('حسناً', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 // Dialog: Insufficient Funds Alert
 void showInsufficientFundsDialog(BuildContext context) {
   showDialog(
@@ -687,7 +1011,7 @@ void showAboutUsDialog(BuildContext context) {
   );
 }
 
-// Base Scaffold Wrapper with Title Changed to "𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆"
+// Base Scaffold Wrapper
 class BaseScaffold extends StatelessWidget {
   final String title;
   final Widget body;
@@ -849,6 +1173,20 @@ class BaseScaffold extends StatelessWidget {
                   _showSettingsSheet(context);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.redAccent),
+                title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await logoutActiveUser();
+                  if (!context.mounted) return;
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => LoginScreen(toggleTheme: toggleTheme, isDark: isDark),
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -885,20 +1223,38 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    loadOrdersFromStorage();
+    _checkInitialState();
+  }
+
+  void _checkInitialState() async {
+    await loadOrdersFromStorage();
     _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      setState(() {
-        _currentIconIndex = (_currentIconIndex + 1) % _socialIcons.length;
-      });
+      if (mounted) {
+        setState(() {
+          _currentIconIndex = (_currentIconIndex + 1) % _socialIcons.length;
+        });
+      }
     });
+
+    final activeUser = await getActiveLoggedUser();
 
     Future.delayed(const Duration(seconds: 3), () {
       _timer?.cancel();
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => LoginScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
-        ),
-      );
+      if (!mounted) return;
+
+      if (activeUser != null && activeUser.isNotEmpty) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+          ),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => LoginScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+          ),
+        );
+      }
     });
   }
 
@@ -945,23 +1301,67 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _usernameController = TextEditingController();
+  final _inputController = TextEditingController();
   final _passwordController = TextEditingController();
-  String? _errorMessage;
 
   void _handleLogin() async {
-    if (_usernameController.text == 'admin' && _passwordController.text == 'admin') {
+    final input = _inputController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (input.isEmpty || password.isEmpty) {
+      showCustomAlertDialog(
+        context,
+        title: 'تنبيه',
+        message: 'يرجى إدخال اسم المستخدم أو البريد الإلكتروني وكلمة المرور.',
+        icon: Icons.warning_amber_rounded,
+        iconColor: Colors.amber,
+      );
+      return;
+    }
+
+    final users = await getUsersFromStorage();
+
+    // البحث بإسم المستخدم أو الإيميل
+    UserAccountModel? matchedUser;
+    for (var u in users) {
+      if (u.username.toLowerCase() == input.toLowerCase() || u.email.toLowerCase() == input.toLowerCase()) {
+        matchedUser = u;
+        break;
+      }
+    }
+
+    if (matchedUser == null) {
+      // الحساب غير موجود إطلاقاً
+      if (!mounted) return;
+      showCustomAlertDialog(
+        context,
+        title: 'الحساب غير موجود',
+        message: 'عذراً عزيزي المستخدم، لا يوجد حساب مسجل بهذه البيانات (اسم المستخدم أو البريد الإلكتروني).\n\nيرجى التأكد من كتابة البيانات بشكل صحيح أو الضغط على "إنشاء حساب" للبدء.',
+        icon: Icons.person_off_outlined,
+        iconColor: Colors.redAccent,
+      );
+    } else if (matchedUser.password != password) {
+      // الحساب موجود ولكن كلمة السر خطأ
+      if (!mounted) return;
+      showCustomAlertDialog(
+        context,
+        title: 'كلمة المرور خاطئة',
+        message: 'كلمة المرور التي أدخلتها غير صحيحة للحساب ($input).\n\nيرجى إعادة المحاولة والتأكد من الأحرف والأرقام المدخلة.',
+        icon: Icons.lock_reset,
+        iconColor: Colors.orangeAccent,
+      );
+    } else {
+      // تسجل الدخول بنجاح
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('active_logged_username', matchedUser.username);
       await loadOrdersFromStorage();
+
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => HomeScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
         ),
       );
-    } else {
-      setState(() {
-        _errorMessage = 'اسم المستخدم أو كلمة المرور غير صحيحة';
-      });
     }
   }
 
@@ -991,9 +1391,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 30),
                 TextField(
-                  controller: _usernameController,
+                  controller: _inputController,
                   decoration: InputDecoration(
-                    labelText: 'اسم المستخدم',
+                    labelText: 'اسم المستخدم أو البريد الإلكتروني',
                     prefixIcon: const Icon(Icons.person, color: Color(0xFF00A2FF)),
                     filled: true,
                     fillColor: Theme.of(context).cardColor,
@@ -1012,10 +1412,34 @@ class _LoginScreenState extends State<LoginScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
                   ),
                 ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent, fontSize: 14)),
-                ],
+                const SizedBox(height: 15),
+
+                // زر الانتقال لإنشاء حساب
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('ليس لديك حساب ؟ ', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => RegisterScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'إنشاء حساب',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF00A2FF),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
                 const SizedBox(height: 25),
                 SizedBox(
                   width: double.infinity,
@@ -1034,6 +1458,343 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// 2.1 Register Screen (إنشاء حساب جديد)
+class RegisterScreen extends StatefulWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+
+  const RegisterScreen({super.key, required this.toggleTheme, required this.isDark});
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _usernameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  bool _isUsernameArabic = false;
+  bool _isEmailInvalid = false;
+
+  bool get _isPasswordMatching {
+    final p = _passwordController.text;
+    final cp = _confirmPasswordController.text;
+    return p.isNotEmpty && cp.isNotEmpty && p == cp;
+  }
+
+  bool get _hasLettersAndNumbers {
+    final p = _passwordController.text;
+    final hasLetter = RegExp(r'[a-zA-Z]').hasMatch(p);
+    final hasNumber = RegExp(r'[0-9]').hasMatch(p);
+    return hasLetter && hasNumber;
+  }
+
+  bool get _isPasswordLengthValid {
+    final p = _passwordController.text;
+    return p.length >= 8 && _hasLettersAndNumbers;
+  }
+
+  void _checkUsername(String val) {
+    // التحقق من الحروف الإنجليزية فقط (عدم وجود حروف عربية)
+    final arabicReg = RegExp(r'[\u0600-\u06FF]');
+    setState(() {
+      _isUsernameArabic = arabicReg.hasMatch(val);
+    });
+  }
+
+  void _checkEmail(String val) {
+    final trimmed = val.trim().toLowerCase();
+    setState(() {
+      if (trimmed.isEmpty) {
+        _isEmailInvalid = false;
+      } else {
+        _isEmailInvalid = !trimmed.endsWith('@gmail.com');
+      }
+    });
+  }
+
+  void _onRegisterPressed() async {
+    final username = _usernameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    // 1. التحقق من الحقول الإجبارية
+    if (username.isEmpty || email.isEmpty || password.isEmpty) {
+      showCustomAlertDialog(
+        context,
+        title: 'تنبيه',
+        message: 'يرجى ملء جميع الحقول المطلوبة للتسجيل.',
+        icon: Icons.warning_amber_rounded,
+        iconColor: Colors.amber,
+      );
+      return;
+    }
+
+    // 2. التحقق من اللغة الانكليزية لاسم المستخدم
+    if (_isUsernameArabic || RegExp(r'[\u0600-\u06FF]').hasMatch(username)) {
+      showCustomAlertDialog(
+        context,
+        title: 'خطأ في اسم المستخدم',
+        message: 'اسم المستخدم يجب أن يتكون من أحرف إنجليزية فقط دون استخدام اللغة العربية.',
+        icon: Icons.error_outline,
+        iconColor: Colors.redAccent,
+      );
+      return;
+    }
+
+    // 3. التحقق من نطاق gmail.com
+    if (!email.toLowerCase().endsWith('@gmail.com')) {
+      showCustomAlertDialog(
+        context,
+        title: 'خطأ في البريد الإلكتروني',
+        message: 'يرجى استخدام بريد إلكتروني صحيح وينتهي بالنطاق @gmail.com حصراً.',
+        icon: Icons.mark_email_unread_outlined,
+        iconColor: Colors.redAccent,
+      );
+      return;
+    }
+
+    // 4. التحقق من المربعات الثلاثة لكلمة المرور
+    List<String> failedRules = [];
+    if (!_isPasswordMatching) {
+      failedRules.add('• مربع "كلمة المرور متطابقة": كلمة المرور غير متطابقة مع حقل الإعادة.');
+    }
+    if (!_hasLettersAndNumbers) {
+      failedRules.add('• مربع "استخدم حروف وارقام": يجب تضمين أرقام وأحرف إنجليزية معاً.');
+    }
+    if (!_isPasswordLengthValid) {
+      failedRules.add('• مربع "تستوفي الشروط": يجب أن تكون كلمة المرور 8 خانات أو أكثر وتتضمن حروف وأرقام.');
+    }
+
+    if (failedRules.isNotEmpty) {
+      showCustomAlertDialog(
+        context,
+        title: 'تنبيه شروط الحساب',
+        message: 'تعذر التسجيل للأسباب التالية:\n\n${failedRules.join("\n\n")}\n\nيرجى تصحيح الأخطاء لكي تصبح العلامات صح للبدء.',
+        icon: Icons.rule,
+        iconColor: Colors.redAccent,
+      );
+      return;
+    }
+
+    // فتح واجهة الكباتشا التفاعلية (سحب المثلث)
+    PuzzleCaptchaDialog.show(
+      context,
+      onSuccess: () async {
+        final newUser = UserAccountModel(
+          username: username,
+          email: email,
+          password: password,
+        );
+        await saveUserAccount(newUser);
+        await loadOrdersFromStorage();
+
+        if (!mounted) return;
+        showRgbNotificationOverlay(context, 'تم إنشاء حسابك بنجاح! أهلاً بك 🎉');
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
+          ),
+          (route) => false,
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('إنشاء حساب جديد'),
+          centerTitle: true,
+          elevation: 0,
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // حقل اسم المستخدم
+                const Text('اسم المستخدم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _usernameController,
+                  onChanged: _checkUsername,
+                  decoration: InputDecoration(
+                    hintText: 'اكتب اسم المستخدم بالإنجليزي',
+                    prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF00A2FF)),
+                    filled: true,
+                    fillColor: _isUsernameArabic ? Colors.red.withOpacity(0.12) : Theme.of(context).cardColor,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: _isUsernameArabic ? const BorderSide(color: Colors.red, width: 2) : BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: _isUsernameArabic ? const BorderSide(color: Colors.red, width: 2) : const BorderSide(color: Color(0xFF00A2FF), width: 2),
+                    ),
+                  ),
+                ),
+                if (_isUsernameArabic) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    'استخدم اللغة انكليزي فقط',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+
+                // حقل البريد الإلكتروني
+                const Text('البريد الإلكتروني', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _emailController,
+                  onChanged: _checkEmail,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    hintText: 'example@gmail.com',
+                    prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF00A2FF)),
+                    filled: true,
+                    fillColor: _isEmailInvalid ? Colors.red.withOpacity(0.12) : Theme.of(context).cardColor,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: _isEmailInvalid ? const BorderSide(color: Colors.red, width: 2) : BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: _isEmailInvalid ? const BorderSide(color: Colors.red, width: 2) : const BorderSide(color: Color(0xFF00A2FF), width: 2),
+                    ),
+                  ),
+                ),
+                if (_isEmailInvalid) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    'استخدم فقط ايميل حقيقي من نطاق gmail.com',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+
+                // حقل كلمة المرور
+                const Text('كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'أدخل كلمة المرور',
+                    prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF00A2FF)),
+                    filled: true,
+                    fillColor: Theme.of(context).cardColor,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // حقل إعادة كلمة المرور
+                const Text('إعادة كتابة كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _confirmPasswordController,
+                  obscureText: true,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'أعد كتابة كلمة المرور',
+                    prefixIcon: const Icon(Icons.lock_reset, color: Color(0xFF00A2FF)),
+                    filled: true,
+                    fillColor: Theme.of(context).cardColor,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // مربعات مؤشرات الشروط
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildConditionRow('كلمة المرور متطابقة', _isPasswordMatching),
+                      const Divider(height: 16),
+                      _buildConditionRow('تستوفي الشروط (8 خانات فأكثر)', _isPasswordLengthValid),
+                      const Divider(height: 16),
+                      _buildConditionRow('استخدم حروف وارقام', _hasLettersAndNumbers),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 25),
+
+                // زر تسجيل
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    onPressed: _onRegisterPressed,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A2FF),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    ),
+                    child: const Text('تسجيل', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConditionRow(String title, bool isPassed) {
+    return Row(
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: isPassed ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+            shape: BoxShape.rectangle,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: isPassed ? Colors.green : Colors.red, width: 1.5),
+          ),
+          child: Icon(
+            isPassed ? Icons.check : Icons.close,
+            size: 16,
+            color: isPassed ? Colors.green : Colors.red,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isPassed ? Colors.green : Colors.redAccent,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1174,7 +1935,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Button: Add Funds / Top Up Account
             _buildActionButton(
               icon: Icons.add_card,
               title: 'شحن الحساب (إضافة أموال)',
@@ -1457,7 +2217,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// 4. Add Funds Screen (شحن الحساب)
+// 4. Add Funds Screen
 class AddFundsScreen extends StatelessWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -1895,11 +2655,9 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       return;
     }
 
-    // Calculate total order price
     final double ratePer1000 = double.tryParse(widget.service.rate) ?? 0.0;
     final double totalCost = (parsedQty / 1000.0) * ratePer1000;
 
-    // Check balance for paid services
     if (totalCost > 0 && totalCost > widget.userBalance) {
       showInsufficientFundsDialog(context);
       return;
@@ -2122,7 +2880,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             final newStatus = data['status'].toString();
             order.status = newStatus;
 
-            // Trigger completion pop-up if newly completed
             if (_translateStatus(oldStatus) != 'مكتمل' && _translateStatus(newStatus) == 'مكتمل') {
               final timeStr = _getFormattedElapsedTime(order.createdAt);
               if (mounted) {
