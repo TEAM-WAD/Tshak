@@ -44,6 +44,7 @@ jobs:
             youtube_player_flutter: ^9.0.1
             url_launcher: ^6.3.0
             image_picker: ^1.1.2
+            flutter_secure_storage: ^9.2.2
 
           dev_dependencies:
             flutter_test:
@@ -76,6 +77,20 @@ jobs:
 
       - name: Install Dependencies
         run: flutter pub get
+
+      # إصلاح ملف ProGuard للمكتبات المنسخة تلقائياً
+      - name: Fix Deprecated Proguard Rules
+        run: |
+          find ~/.pub-cache/ -name "build.gradle" -exec sed -i 's/proguard-android.txt/proguard-android-optimize.txt/g' {} +
+
+      - name: Build Release APK
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
 
       # إصلاح ملف ProGuard للمكتبات المنسخة تلقائياً
       - name: Fix Deprecated Proguard Rules
