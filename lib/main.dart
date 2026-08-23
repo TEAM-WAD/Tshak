@@ -14,6 +14,7 @@ void main() async {
   await loadDiscountFromStorage();
   await loadUpdateInfoFromStorage();
   await loadNotificationsFromStorage();
+  await loadActiveUserProfile();
   runApp(const FollowerXApp());
 }
 
@@ -73,6 +74,27 @@ double globalDiscount = 0.0;
 bool hasNewUpdateBadge = false;
 String globalUpdateMsg = '';
 String globalUpdateUrl = '';
+bool activeUserIsMerchant = false;
+String activeMerchantName = '';
+
+Future<void> loadActiveUserProfile() async {
+  final username = await getActiveLoggedUser();
+  if (username == null || username.isEmpty) {
+    activeUserIsMerchant = false;
+    activeMerchantName = '';
+    return;
+  }
+  final users = await getUsersFromStorage();
+  for (final user in users) {
+    if (user.username.toLowerCase() == username.toLowerCase()) {
+      activeUserIsMerchant = user.isMerchant;
+      activeMerchantName = user.merchantName;
+      return;
+    }
+  }
+  activeUserIsMerchant = false;
+  activeMerchantName = '';
+}
 
 class AppNotification {
   final String title;
@@ -164,19 +186,31 @@ class UserAccountModel {
   final String username;
   final String email;
   final String password;
+  final bool isMerchant;
+  final String merchantName;
 
-  UserAccountModel({required this.username, required this.email, required this.password});
+  UserAccountModel({
+    required this.username,
+    required this.email,
+    required this.password,
+    this.isMerchant = false,
+    this.merchantName = '',
+  });
 
   Map<String, dynamic> toJson() => {
         'username': username,
         'email': email,
         'password': password,
+        'isMerchant': isMerchant,
+        'merchantName': merchantName,
       };
 
   factory UserAccountModel.fromJson(Map<String, dynamic> json) => UserAccountModel(
         username: json['username'] ?? '',
         email: json['email'] ?? '',
         password: json['password'] ?? '',
+        isMerchant: json['isMerchant'] == true,
+        merchantName: json['merchantName']?.toString() ?? '',
       );
 }
 
@@ -208,6 +242,8 @@ Future<String?> getActiveLoggedUser() async {
 Future<void> logoutActiveUser() async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove('active_logged_username');
+  activeUserIsMerchant = false;
+  activeMerchantName = '';
 }
 
 // Per-User Storage Helpers
@@ -246,6 +282,99 @@ Future<void> saveUserOrders(String username, List<OrderModel> orders) async {
   await prefs.setStringList('user_orders_$username', encoded);
 }
 
+// Merchant account and free-service cooldown helpers
+String _randomMerchantUsername() {
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  const digits = '0123456789';
+  final random = math.Random();
+  String result = 'follwer';
+  for (int i = 0; i < 5; i++) {
+    result += letters[random.nextInt(letters.length)];
+  }
+  for (int i = 0; i < 4; i++) {
+    result += digits[random.nextInt(digits.length)];
+  }
+  return result;
+}
+
+String _randomMerchantPassword() {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  final random = math.Random();
+  return List.generate(12, (_) => chars[random.nextInt(chars.length)]).join();
+}
+
+Future<UserAccountModel> createMerchantAccount(String merchantName) async {
+  final random = math.Random();
+  String username = _randomMerchantUsername();
+  final users = await getUsersFromStorage();
+  while (users.any((u) => u.username.toLowerCase() == username.toLowerCase())) {
+    username = _randomMerchantUsername() + random.nextInt(99).toString();
+  }
+
+  String password = _randomMerchantPassword();
+  while (users.any((u) => u.password == password)) {
+    password = _randomMerchantPassword();
+  }
+
+  final safeEmail = '${username}@merchant.local';
+  final merchant = UserAccountModel(
+    username: username,
+    email: safeEmail,
+    password: password,
+    isMerchant: true,
+    merchantName: merchantName,
+  );
+
+  final prefs = await SharedPreferences.getInstance();
+  final allUsers = await getUsersFromStorage();
+  allUsers.add(merchant);
+  await prefs.setStringList(
+    'app_users_list',
+    allUsers.map((u) => json.encode(u.toJson())).toList(),
+  );
+  await setUserBalance(username, 0.0);
+  await setUserSpending(username, 0.0);
+  return merchant;
+}
+
+Future<DateTime?> getFreeServiceCooldownStart(String username) async {
+  final prefs = await SharedPreferences.getInstance();
+  final value = prefs.getString('free_service_cooldown_$username');
+  if (value == null) return null;
+  return DateTime.tryParse(value);
+}
+
+Future<void> setFreeServiceCooldownStart(String username, DateTime value) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('free_service_cooldown_$username', value.toIso8601String());
+}
+
+Future<Duration> getFreeServiceRemaining(String username) async {
+  final started = await getFreeServiceCooldownStart(username);
+  if (started == null) return Duration.zero;
+  final elapsed = DateTime.now().difference(started);
+  const cooldown = Duration(minutes: 5);
+  if (elapsed >= cooldown) {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('free_service_cooldown_$username');
+    return Duration.zero;
+  }
+  return cooldown - elapsed;
+}
+
+bool isFreeService(ServiceModel service) {
+  return service.category.contains('مجانية') ||
+      service.name.contains('مجاني') ||
+      (double.tryParse(service.rate) ?? 0.0) == 0.0;
+}
+
+String formatCooldown(Duration duration) {
+  final totalSeconds = math.max(0, duration.inSeconds);
+  final minutes = totalSeconds ~/ 60;
+  final seconds = totalSeconds % 60;
+  return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+}
+
 // Service & Order Models
 class ServiceModel {
   final String service;
@@ -256,7 +385,7 @@ class ServiceModel {
   final String min;
   final String max;
 
-  ServiceModel({
+  const ServiceModel({
     required this.service,
     required this.name,
     required this.type,
@@ -390,26 +519,48 @@ class AppLogoWidget extends StatelessWidget {
 }
 
 // Price Display Widget
-double getAppRate(String originalRateStr) {
+double getBaseAppRate(String originalRateStr) {
   final double originalRate = double.tryParse(originalRateStr) ?? 0.0;
   if (originalRate <= 0) return 0.0;
-  final double markedUpRate = originalRate + 0.20;
-  if (globalDiscount > 0) {
-    return math.max(0.0, markedUpRate - globalDiscount);
+  return originalRate + 0.20;
+}
+
+double getAppRate(String originalRateStr) {
+  final double baseAppRate = getBaseAppRate(originalRateStr);
+  if (baseAppRate <= 0) return 0.0;
+
+  // حساب التاجر يحصل دائماً على خصم 10 سنت من سعر التطبيق.
+  if (activeUserIsMerchant) {
+    return math.max(0.0, baseAppRate - 0.10);
   }
-  return markedUpRate;
+
+  // خصم لوحة الإدارة يطبق على المستخدم العادي فقط.
+  if (globalDiscount > 0) {
+    return math.max(0.0, baseAppRate - globalDiscount);
+  }
+  return baseAppRate;
 }
 
 Widget buildPriceDisplay(String originalRateStr) {
-  final double originalRate = double.tryParse(originalRateStr) ?? 0.0;
-  final double appRate = getAppRate(originalRateStr);
-  if (originalRate > 0 && (globalDiscount > 0 || appRate != originalRate)) {
-    final double discountedRate = appRate;
+  final double baseAppRate = getBaseAppRate(originalRateStr);
+  final double finalRate = getAppRate(originalRateStr);
+  if (baseAppRate <= 0) {
+    return const Text(
+      '\$0.00',
+      style: TextStyle(
+        color: Color(0xFF00A2FF),
+        fontWeight: FontWeight.bold,
+        fontSize: 16,
+      ),
+    );
+  }
+
+  if (activeUserIsMerchant) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          '\$${originalRate.toStringAsFixed(2)}',
+          '\$${baseAppRate.toStringAsFixed(2)}',
           style: const TextStyle(
             color: Colors.grey,
             fontSize: 12,
@@ -419,7 +570,7 @@ Widget buildPriceDisplay(String originalRateStr) {
         ),
         const SizedBox(width: 6),
         Text(
-          '\$${discountedRate.toStringAsFixed(2)}',
+          '\$${finalRate.toStringAsFixed(2)}',
           style: const TextStyle(
             color: Colors.redAccent,
             fontWeight: FontWeight.bold,
@@ -428,16 +579,42 @@ Widget buildPriceDisplay(String originalRateStr) {
         ),
       ],
     );
-  } else {
-    return Text(
-      '\$${originalRate.toStringAsFixed(2)}',
-      style: const TextStyle(
-        color: Color(0xFF00A2FF),
-        fontWeight: FontWeight.bold,
-        fontSize: 16,
-      ),
+  }
+
+  if (globalDiscount > 0) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '\$${baseAppRate.toStringAsFixed(2)}',
+          style: const TextStyle(
+            color: Colors.grey,
+            fontSize: 12,
+            decoration: TextDecoration.lineThrough,
+            decorationColor: Colors.red,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '\$${finalRate.toStringAsFixed(2)}',
+          style: const TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ],
     );
   }
+
+  return Text(
+    '\$${baseAppRate.toStringAsFixed(2)}',
+    style: const TextStyle(
+      color: Color(0xFF00A2FF),
+      fontWeight: FontWeight.bold,
+      fontSize: 16,
+    ),
+  );
 }
 
 // Swinging Bell Icon Component
@@ -1348,6 +1525,119 @@ void showAboutUsDialog(BuildContext context) {
   );
 }
 
+class SocialMediaRotatingLogo extends StatefulWidget {
+  final double size;
+  const SocialMediaRotatingLogo({super.key, this.size = 40});
+
+  @override
+  State<SocialMediaRotatingLogo> createState() => _SocialMediaRotatingLogoState();
+}
+
+class _SocialMediaRotatingLogoState extends State<SocialMediaRotatingLogo> {
+  final List<String> _icons = [
+    'https://img.icons8.com/color/144/instagram-new.png',
+    'https://img.icons8.com/color/144/tiktok.png',
+    'https://img.icons8.com/color/144/facebook-new.png',
+    'https://img.icons8.com/color/144/twitterx.png',
+    'https://img.icons8.com/color/144/telegram-app.png',
+    'https://img.icons8.com/color/144/whatsapp.png',
+    'https://img.icons8.com/color/144/youtube-play.png',
+  ];
+  int _index = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted) setState(() => _index = (_index + 1) % _icons.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 900),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: animation, child: child),
+      ),
+      child: Image.network(
+        _icons[_index],
+        key: ValueKey(_icons[_index]),
+        width: widget.size,
+        height: widget.size,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Icon(Icons.apps, size: widget.size * 0.65, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class AnimatedMerchantNameBox extends StatefulWidget {
+  final String name;
+  const AnimatedMerchantNameBox({super.key, required this.name});
+
+  @override
+  State<AnimatedMerchantNameBox> createState() => _AnimatedMerchantNameBoxState();
+}
+
+class _AnimatedMerchantNameBoxState extends State<AnimatedMerchantNameBox>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final color = HSLColor.fromAHSL(
+          1,
+          (_controller.value * 360) % 360,
+          0.85,
+          0.55,
+        ).toColor();
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+          constraints: const BoxConstraints(maxWidth: 220),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color, width: 1.5),
+            boxShadow: [BoxShadow(color: color.withOpacity(0.35), blurRadius: 6)],
+          ),
+          child: Text(
+            'اسم التاجر : ${widget.name}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
+          ),
+        );
+      },
+    );
+  }
+}
+
 // Base Scaffold Component
 class BaseScaffold extends StatelessWidget {
   final String title;
@@ -1430,9 +1720,26 @@ class BaseScaffold extends StatelessWidget {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           centerTitle: true,
-          title: showHeaderTitle
-              ? const DynamicBorderTitleBox(text: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', isLarge: true)
-              : DynamicBorderTitleBox(text: title),
+          title: FutureBuilder<String?>(
+            future: getActiveLoggedUser(),
+            builder: (context, snapshot) {
+              if (!activeUserIsMerchant || activeMerchantName.isEmpty) {
+                return showHeaderTitle
+                    ? const DynamicBorderTitleBox(text: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', isLarge: true)
+                    : DynamicBorderTitleBox(text: title);
+              }
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  showHeaderTitle
+                      ? const DynamicBorderTitleBox(text: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', isLarge: true)
+                      : DynamicBorderTitleBox(text: title),
+                  const SizedBox(height: 3),
+                  AnimatedMerchantNameBox(name: activeMerchantName),
+                ],
+              );
+            },
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 22),
             onPressed: () => Navigator.maybePop(context),
@@ -1465,15 +1772,15 @@ class BaseScaffold extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              const DrawerHeader(
-                decoration: BoxDecoration(color: Color(0xFF00A2FF)),
+              DrawerHeader(
+                decoration: const BoxDecoration(color: Color(0xFF00A2FF)),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     CircleAvatar(
                       radius: 35,
                       backgroundColor: Colors.white24,
-                      child: AppLogoWidget(size: 40),
+                      child: SocialMediaRotatingLogo(size: 40),
                     ),
                     SizedBox(height: 10),
                     Text(
@@ -1946,6 +2253,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('active_logged_username', matchedUser.username);
+      activeUserIsMerchant = matchedUser.isMerchant;
+      activeMerchantName = matchedUser.merchantName;
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -2482,6 +2791,98 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  void _showGenerateMerchantDialog() {
+    final merchantNameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('توليد حساب تاجر'),
+          content: TextField(
+            controller: merchantNameController,
+            decoration: InputDecoration(
+              labelText: 'اسم المورد أو التاجر (ثنائي)',
+              prefixIcon: const Icon(Icons.storefront),
+              filled: true,
+              fillColor: Theme.of(context).cardColor,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+              onPressed: () async {
+                final merchantName = merchantNameController.text.trim();
+                if (merchantName.isEmpty || merchantName.split(RegExp(r'\s+')).length < 2) {
+                  showCustomAlertDialog(
+                    context,
+                    title: 'تنبيه',
+                    message: 'يرجى إدخال اسم المورد أو التاجر ثنائيًا.',
+                    icon: Icons.warning_amber_rounded,
+                    iconColor: Colors.amber,
+                  );
+                  return;
+                }
+
+                final merchant = await createMerchantAccount(merchantName);
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (!mounted) return;
+
+                showDialog(
+                  context: context,
+                  builder: (resultCtx) => Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      title: const Text('تم توليد حساب التاجر'),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('اسم التاجر: $merchantName', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 14),
+                          SelectableText(
+                            'اسم المستخدم: ${merchant.username}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          SelectableText(
+                            'كلمة المرور: ${merchant.password}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'تم حفظ الحساب ويمكن للتاجر تسجيل الدخول مباشرة بهذه البيانات.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.green),
+                          ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(resultCtx),
+                          child: const Text('تم'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+                _loadAdminData();
+              },
+              child: const Text('توليد وحفظ', style: TextStyle(color: Colors.white)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showNewUpdateDialog() {
     final msgController = TextEditingController();
     final urlController = TextEditingController();
@@ -2633,6 +3034,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
+                      onPressed: _showGenerateMerchantDialog,
+                      icon: const Icon(Icons.storefront, color: Colors.white),
+                      label: const Text('توليد حساب تاجر', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
                       onPressed: _showNewUpdateDialog,
                       icon: const Icon(Icons.system_update_alt, color: Colors.white),
                       label: const Text('رفع تحديث جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -2763,6 +3175,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _loadUserData() async {
+    await loadActiveUserProfile();
     final active = await getActiveLoggedUser() ?? 'guest';
     final bal = await getUserBalance(active);
     final sp = await getUserSpending(active);
@@ -3530,6 +3943,49 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
   }
 }
 
+class PlatformIconWidget extends StatelessWidget {
+  final String platformKey;
+  final double size;
+
+  const PlatformIconWidget({
+    super.key,
+    required this.platformKey,
+    this.size = 26,
+  });
+
+  String get _url {
+    switch (platformKey.toLowerCase()) {
+      case 'tiktok':
+        return 'https://img.icons8.com/color/144/tiktok.png';
+      case 'facebook':
+        return 'https://img.icons8.com/color/144/facebook-new.png';
+      case 'twitter':
+        return 'https://img.icons8.com/color/144/twitterx.png';
+      case 'telegram':
+        return 'https://img.icons8.com/color/144/telegram-app.png';
+      case 'whatsapp':
+        return 'https://img.icons8.com/color/144/whatsapp.png';
+      case 'spotify':
+        return 'https://img.icons8.com/color/144/spotify.png';
+      case 'threads':
+        return 'https://img.icons8.com/color/144/threads.png';
+      default:
+        return 'https://img.icons8.com/color/144/instagram-new.png';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      _url,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Icon(Icons.apps, size: size, color: const Color(0xFF00A2FF)),
+    );
+  }
+}
+
 // 6. Platform Services Screen
 class PlatformServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -3635,7 +4091,7 @@ class _PlatformServicesScreenState extends State<PlatformServicesScreen> {
                           margin: const EdgeInsets.only(bottom: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           child: ListTile(
-                            leading: const AppLogoWidget(size: 26),
+                            leading: PlatformIconWidget(platformKey: widget.platformKey, size: 26),
                             title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                             subtitle: Text('الحد الأدنى: ${s.min} | الأقصى: ${s.max}', style: const TextStyle(fontSize: 12)),
                             trailing: buildPriceDisplay(s.rate),
@@ -3741,6 +4197,20 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       return;
     }
 
+    if (isFreeService(widget.service)) {
+      final remaining = await getFreeServiceRemaining(widget.currentUser);
+      if (remaining > Duration.zero) {
+        showCustomAlertDialog(
+          context,
+          title: 'الخدمة المجانية مقفلة مؤقتاً',
+          message: 'يمكنك طلب خدمة مجانية جديدة بعد ${formatCooldown(remaining)}.',
+          icon: Icons.timer_outlined,
+          iconColor: Colors.orange,
+        );
+        return;
+      }
+    }
+
     if (widget.userBalance < calculatedCost) {
       showInsufficientFundsDialog(context);
       return;
@@ -3787,6 +4257,10 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         final userOrds = await getUserOrders(widget.currentUser);
         userOrds.insert(0, newOrder);
         await saveUserOrders(widget.currentUser, userOrds);
+
+        if (isFreeService(widget.service)) {
+          await setFreeServiceCooldownStart(widget.currentUser, DateTime.now());
+        }
 
         if (!mounted) return;
         addAppNotification(
@@ -4002,8 +4476,20 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       body: isLoading
           ? const Center(child: RainbowSpinner())
           : orders.isEmpty
-              ? const Center(child: Text('لا توجد طلبات سابقة لهذا الحساب'))
-              : ListView.builder(
+              ? RefreshIndicator(
+                  onRefresh: _loadUserOrders,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 260),
+                      Center(child: Text('لا توجد طلبات سابقة لهذا الحساب')),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadUserOrders,
+                  child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   itemCount: orders.length,
                   itemBuilder: (context, index) {
@@ -4047,13 +4533,14 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                       ),
                     );
                   },
+                  ),
                 ),
     );
   }
 }
 
 // 9. Free Services Screen
-class FreeServicesScreen extends StatelessWidget {
+class FreeServicesScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
   final String currentUser;
@@ -4068,54 +4555,134 @@ class FreeServicesScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final freeServices = [
-      ServiceModel(service: '2818', name: 'مشاهدات انستكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
-      ServiceModel(service: '3268', name: 'مشاهدات تيك توك مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
-      ServiceModel(service: '3408', name: 'مشاهدات بوست تليكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '10', max: '100'),
-      ServiceModel(service: '3060', name: 'اعضاء تليكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '10', max: '50'),
-      ServiceModel(service: '3396', name: 'لايكات انستكرام بوست او ريلز مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '50', max: '50'),
-      ServiceModel(service: '3485', name: 'مشاهدات ستوري انستكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
-    ];
+  State<FreeServicesScreen> createState() => _FreeServicesScreenState();
+}
 
+class _FreeServicesScreenState extends State<FreeServicesScreen> {
+  Timer? _cooldownTimer;
+  Duration _remaining = Duration.zero;
+
+  final List<ServiceModel> _freeServices = const [
+    ServiceModel(service: '2818', name: 'مشاهدات انستكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+    ServiceModel(service: '3268', name: 'مشاهدات تيك توك مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+    ServiceModel(service: '3408', name: 'مشاهدات بوست تليكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '10', max: '100'),
+    ServiceModel(service: '3060', name: 'اعضاء تليكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '10', max: '50'),
+    ServiceModel(service: '3396', name: 'لايكات انستكرام بوست او ريلز مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '50', max: '50'),
+    ServiceModel(service: '3485', name: 'مشاهدات ستوري انستكرام مجاني', type: 'Default', category: 'خدمات مجانية', rate: '0.00', min: '100', max: '100'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshCooldown();
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _refreshCooldown());
+  }
+
+  @override
+  void dispose() {
+    _cooldownTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshCooldown() async {
+    final remaining = await getFreeServiceRemaining(widget.currentUser);
+    if (mounted && remaining.inSeconds != _remaining.inSeconds) {
+      setState(() => _remaining = remaining);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final locked = _remaining > Duration.zero;
     return BaseScaffold(
       title: 'خدمات مجانية',
-      toggleTheme: toggleTheme,
-      isDark: isDark,
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: freeServices.length,
-        itemBuilder: (context, index) {
-          final s = freeServices[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: ListTile(
-              leading: const AppLogoWidget(size: 26),
-              title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              subtitle: const Text('مجاني بالكامل بدون خصم رصيد', style: TextStyle(color: Colors.green, fontSize: 12)),
-              trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => OrderFormScreen(
-                        toggleTheme: toggleTheme,
-                        isDark: isDark,
-                        service: s,
-                        currentUser: currentUser,
-                        userBalance: userBalance,
-                      ),
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: Column(
+        children: [
+          if (locked)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.orange.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer_outlined, color: Colors.orange),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'الخدمات المجانية متاحة مرة كل 5 دقائق\nالوقت المتبقي: ${formatCooldown(_remaining)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
                     ),
-                  );
-                },
-                child: const Text('احصل الآن', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ),
             ),
-          );
-        },
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _freeServices.length,
+              itemBuilder: (context, index) {
+                final s = _freeServices[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: ListTile(
+                    leading: PlatformIconWidget(
+                      platformKey: _servicePlatformKey(s),
+                      size: 26,
+                    ),
+                    title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text(
+                      locked
+                          ? 'متاحة بعد ${formatCooldown(_remaining)}'
+                          : 'مجاني بالكامل بدون خصم رصيد',
+                      style: TextStyle(color: locked ? Colors.orange : Colors.green, fontSize: 12),
+                    ),
+                    trailing: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: locked ? Colors.grey : Colors.green),
+                      onPressed: locked
+                          ? null
+                          : () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => OrderFormScreen(
+                                    toggleTheme: widget.toggleTheme,
+                                    isDark: widget.isDark,
+                                    service: s,
+                                    currentUser: widget.currentUser,
+                                    userBalance: widget.userBalance,
+                                  ),
+                                ),
+                              );
+                              await _refreshCooldown();
+                            },
+                      child: Text(
+                        locked ? 'مقفل' : 'احصل الآن',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  String _servicePlatformKey(ServiceModel service) {
+    final value = '${service.name} ${service.category}'.toLowerCase();
+    if (value.contains('تيك') || value.contains('tiktok')) return 'tiktok';
+    if (value.contains('تلي') || value.contains('telegram')) return 'telegram';
+    if (value.contains('فيس') || value.contains('facebook')) return 'facebook';
+    return 'instagram';
   }
 }
