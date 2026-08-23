@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
@@ -179,6 +180,119 @@ void addAppNotification(String title, String body, BuildContext? context) {
   if (context != null) {
     showRgbNotificationOverlay(context, '$title\n$body');
   }
+}
+
+// Technical Support Complaint Model & Persistence
+class SupportComplaintModel {
+  final String id;
+  final String username;
+  final String email;
+  final String type;
+  final String message;
+  final String imageBase64;
+  final DateTime createdAt;
+  String status;
+  String reply;
+  DateTime? repliedAt;
+
+  SupportComplaintModel({
+    required this.id,
+    required this.username,
+    required this.email,
+    required this.type,
+    required this.message,
+    required this.imageBase64,
+    required this.createdAt,
+    this.status = 'قيد المراجعة',
+    this.reply = '',
+    this.repliedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'email': email,
+        'type': type,
+        'message': message,
+        'imageBase64': imageBase64,
+        'createdAt': createdAt.toIso8601String(),
+        'status': status,
+        'reply': reply,
+        'repliedAt': repliedAt?.toIso8601String(),
+      };
+
+  factory SupportComplaintModel.fromJson(Map<String, dynamic> json) => SupportComplaintModel(
+        id: json['id']?.toString() ?? '',
+        username: json['username']?.toString() ?? '',
+        email: json['email']?.toString() ?? '',
+        type: json['type']?.toString() ?? 'شكوى بخصوص شي اخر',
+        message: json['message']?.toString() ?? '',
+        imageBase64: json['imageBase64']?.toString() ?? '',
+        createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ?? DateTime.now(),
+        status: json['status']?.toString() ?? 'قيد المراجعة',
+        reply: json['reply']?.toString() ?? '',
+        repliedAt: json['repliedAt'] != null ? DateTime.tryParse(json['repliedAt'].toString()) : null,
+      );
+}
+
+Future<List<SupportComplaintModel>> getSupportComplaints() async {
+  final prefs = await SharedPreferences.getInstance();
+  final encoded = prefs.getStringList('support_complaints_list');
+  if (encoded == null) return [];
+  return encoded.map((item) {
+    try {
+      return SupportComplaintModel.fromJson(json.decode(item));
+    } catch (_) {
+      return null;
+    }
+  }).whereType<SupportComplaintModel>().toList();
+}
+
+Future<void> saveSupportComplaints(List<SupportComplaintModel> complaints) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setStringList(
+    'support_complaints_list',
+    complaints.map((item) => json.encode(item.toJson())).toList(),
+  );
+}
+
+Future<void> saveSupportComplaint(SupportComplaintModel complaint) async {
+  final complaints = await getSupportComplaints();
+  complaints.insert(0, complaint);
+  await saveSupportComplaints(complaints);
+}
+
+Future<void> updateSupportComplaint(SupportComplaintModel complaint) async {
+  final complaints = await getSupportComplaints();
+  final index = complaints.indexWhere((item) => item.id == complaint.id);
+  if (index >= 0) {
+    complaints[index] = complaint;
+  }
+  await saveSupportComplaints(complaints);
+}
+
+Future<void> deleteSupportComplaint(String id) async {
+  final complaints = await getSupportComplaints();
+  complaints.removeWhere((item) => item.id == id);
+  await saveSupportComplaints(complaints);
+}
+
+Future<String?> getCurrentUserEmail(String username) async {
+  final users = await getUsersFromStorage();
+  for (final user in users) {
+    if (user.username.toLowerCase() == username.toLowerCase()) return user.email;
+  }
+  return null;
+}
+
+String _supportComplaintDate(DateTime date) {
+  final d = date.toLocal();
+  final day = d.day.toString().padLeft(2, '0');
+  final month = d.month.toString().padLeft(2, '0');
+  final year = d.year.toString();
+  final hour = d.hour.toString().padLeft(2, '0');
+  final minute = d.minute.toString().padLeft(2, '0');
+  return '$year/$month/$day - $hour:$minute';
 }
 
 // User Account Model & Per-User Persistence
@@ -1856,17 +1970,10 @@ class BaseScaffold extends StatelessWidget {
                 title: const Text('الدعم الفني'),
                 onTap: () {
                   Navigator.pop(context);
-                  showDialog(
-                    context: context,
-                    builder: (c) => Directionality(
-                      textDirection: TextDirection.rtl,
-                      child: AlertDialog(
-                        title: const Text('الدعم الفني'),
-                        content: const Text('للحصول على المساعدة تواصل معنا عبر واتساب أو تليجرام الدعم الفني المباشر.'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(c), child: const Text('تم')),
-                        ],
-                      ),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SupportScreen(toggleTheme: toggleTheme, isDark: isDark),
                     ),
                   );
                 },
@@ -1939,6 +2046,409 @@ class BaseScaffold extends StatelessWidget {
 }
 
 // Notifications List Screen
+class SupportScreen extends StatefulWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+
+  const SupportScreen({super.key, required this.toggleTheme, required this.isDark});
+
+  @override
+  State<SupportScreen> createState() => _SupportScreenState();
+}
+
+class _SupportScreenState extends State<SupportScreen> {
+  final TextEditingController _messageController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
+  final List<String> _complaintTypes = const [
+    'شكوى بخصوص طلب معين',
+    'شكوى بخصوص ضمان او تعويض',
+    'شكوى بخصوص شحن اموال',
+    'شكوى بخصوص تلف طلب ( عدم اكتمال طلب )',
+    'شكوى بخصوص شي اخر',
+  ];
+
+  String? _selectedType;
+  String _attachedImageBase64 = '';
+  String _attachedImageName = '';
+  List<SupportComplaintModel> _complaints = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComplaints();
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadComplaints() async {
+    final username = await getActiveLoggedUser();
+    final all = await getSupportComplaints();
+    final filtered = username == null
+        ? <SupportComplaintModel>[]
+        : all.where((item) => item.username.toLowerCase() == username.toLowerCase()).toList();
+    if (!mounted) return;
+    setState(() {
+      _complaints = filtered;
+      _loading = false;
+    });
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? picked = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 75, maxWidth: 1600);
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _attachedImageBase64 = base64Encode(bytes);
+        _attachedImageName = picked.name;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      showCustomAlertDialog(context, title: 'تنبيه', message: 'تعذر فتح معرض الصور. تأكد من صلاحيات التطبيق.');
+    }
+  }
+
+  Future<void> _submitComplaint() async {
+    final type = _selectedType;
+    final message = _messageController.text.trim();
+    if (type == null) {
+      showCustomAlertDialog(context, title: 'تنبيه', message: 'يرجى اختيار نوع الشكوى أولاً.');
+      return;
+    }
+    if (message.isEmpty) {
+      showCustomAlertDialog(context, title: 'تنبيه', message: 'يرجى كتابة الشكوى قبل الإرسال.');
+      return;
+    }
+
+    final username = await getActiveLoggedUser();
+    if (username == null || username.isEmpty) {
+      showCustomAlertDialog(context, title: 'تنبيه', message: 'يرجى تسجيل الدخول أولاً لإرسال الشكوى.');
+      return;
+    }
+    final email = await getCurrentUserEmail(username) ?? '';
+    final complaint = SupportComplaintModel(
+      id: '${DateTime.now().microsecondsSinceEpoch}_$username',
+      username: username,
+      email: email,
+      type: type,
+      message: message,
+      imageBase64: _attachedImageBase64,
+      createdAt: DateTime.now(),
+    );
+
+    await saveSupportComplaint(complaint);
+    addAppNotification(
+      'شكوى دعم فني جديدة',
+      'وصلت شكوى جديدة من المستخدم $username.',
+      null,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _selectedType = null;
+      _messageController.clear();
+      _attachedImageBase64 = '';
+      _attachedImageName = '';
+    });
+    await _loadComplaints();
+    if (!mounted) return;
+    showCustomAlertDialog(
+      context,
+      title: 'تم تسجيل شكواك',
+      message: 'تم تسجيل شكواك وسيتم الرد عليك بأقرب وقت.',
+    );
+  }
+
+  Widget _buildComplaintCard(SupportComplaintModel complaint) {
+    final answered = complaint.status == 'تم الرد';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: answered
+            ? () {
+                showCustomAlertDialog(context, title: 'رد الدعم الفني', message: complaint.reply);
+              }
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(answered ? Icons.check_circle : Icons.hourglass_top, color: answered ? Colors.green : Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(complaint.type, style: const TextStyle(fontWeight: FontWeight.bold))),
+                  Text(_supportComplaintDate(complaint.createdAt), style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(answered ? '✓ تم الرد' : 'الشكوى قيد المراجعة فقط', style: TextStyle(color: answered ? Colors.green : Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+              if (answered) ...[
+                const SizedBox(height: 8),
+                Text(complaint.reply, maxLines: 3, overflow: TextOverflow.ellipsis),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseScaffold(
+      title: 'الدعم الفني',
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: _loading
+          ? const Center(child: RainbowSpinner())
+          : RefreshIndicator(
+              onRefresh: _loadComplaints,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('الدعم الفني المباشر للتطبيق', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF00A2FF))),
+                    const SizedBox(height: 14),
+                    const AnimatedYellowWarningBox(text: 'ملاحظة: لا يتم الرد على الشكاوى المزيفة. يرجى إرفاق صور تخص المشكلة إذا كانت الشكوى تخص الخدمات أو التطبيق.'),
+                    const SizedBox(height: 20),
+                    if (_complaints.isNotEmpty) ...[
+                      const Text('شكاواك السابقة', textAlign: TextAlign.right, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      ..._complaints.map(_buildComplaintCard),
+                      const SizedBox(height: 10),
+                    ],
+                    const Text('نوع الشكوى', textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 7),
+                    DropdownButtonFormField<String>(
+                      value: _selectedType,
+                      isExpanded: true,
+                      decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: Theme.of(context).cardColor, hintText: 'اختر نوع الشكوى'),
+                      items: _complaintTypes.map((type) => DropdownMenuItem(value: type, child: Text(type))).toList(),
+                      onChanged: (value) => setState(() => _selectedType = value),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: const Color(0xFF00A2FF).withOpacity(0.22), blurRadius: 12)]),
+                      child: TextField(
+                        controller: _messageController,
+                        minLines: 6,
+                        maxLines: 10,
+                        textAlignVertical: TextAlignVertical.top,
+                        decoration: InputDecoration(
+                          hintText: 'اكتب شكواك هنا',
+                          filled: true,
+                          fillColor: Theme.of(context).cardColor,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF00A2FF), width: 1.5)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF00A2FF), width: 1.5)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF00A2FF), width: 2)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _pickImage,
+                      icon: const Icon(Icons.image_outlined),
+                      label: Text(_attachedImageName.isEmpty ? 'إرفاق صورة' : 'تم إرفاق: $_attachedImageName'),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: _submitComplaint,
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        label: const Text('إرسال شكوى', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+class AdminSupportComplaintsScreen extends StatefulWidget {
+  final Function(bool) toggleTheme;
+  final bool isDark;
+
+  const AdminSupportComplaintsScreen({super.key, required this.toggleTheme, required this.isDark});
+
+  @override
+  State<AdminSupportComplaintsScreen> createState() => _AdminSupportComplaintsScreenState();
+}
+
+class _AdminSupportComplaintsScreenState extends State<AdminSupportComplaintsScreen> {
+  List<SupportComplaintModel> _complaints = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComplaints();
+  }
+
+  Future<void> _loadComplaints() async {
+    final complaints = await getSupportComplaints();
+    if (!mounted) return;
+    setState(() {
+      _complaints = complaints;
+      _loading = false;
+    });
+  }
+
+  Future<void> _replyToComplaint(SupportComplaintModel complaint) async {
+    final controller = TextEditingController(text: complaint.reply);
+    await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('الرد على الشكوى'),
+          content: TextField(
+            controller: controller,
+            minLines: 4,
+            maxLines: 8,
+            decoration: const InputDecoration(hintText: 'اكتب رسالة الرد هنا', border: OutlineInputBorder()),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () async {
+                final reply = controller.text.trim();
+                if (reply.isEmpty) return;
+                complaint.reply = reply;
+                complaint.status = 'تم الرد';
+                complaint.repliedAt = DateTime.now();
+                await updateSupportComplaint(complaint);
+                addAppNotification('تم الرد على شكواك', 'تم رد من قبل الإدارة على شكواك. افتح الدعم الفني لقراءة الرسالة.', null);
+                if (ctx.mounted) Navigator.pop(ctx);
+                await _loadComplaints();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+              child: const Text('إرسال الرد', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+  }
+
+  Future<void> _deleteComplaint(SupportComplaintModel complaint) async {
+    await deleteSupportComplaint(complaint.id);
+    await _loadComplaints();
+  }
+
+  Widget _buildComplaint(SupportComplaintModel complaint) {
+    final answered = complaint.status == 'تم الرد';
+    Widget imageWidget = const SizedBox.shrink();
+    if (complaint.imageBase64.isNotEmpty) {
+      try {
+        imageWidget = Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(base64Decode(complaint.imageBase64), height: 180, width: double.infinity, fit: BoxFit.cover),
+          ),
+        );
+      } catch (_) {}
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const CircleAvatar(child: Icon(Icons.person)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('اسم المستخدم: ${complaint.username}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 3),
+                      Text('إيميل المستخدم: ${complaint.email}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                Icon(answered ? Icons.check_circle : Icons.mark_email_unread, color: answered ? Colors.green : Colors.orange),
+              ],
+            ),
+            const Divider(height: 22),
+            Text('نوع الشكوى: ${complaint.type}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('تاريخ الشكوى: ${_supportComplaintDate(complaint.createdAt)}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+            const SizedBox(height: 10),
+            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor, borderRadius: BorderRadius.circular(12)), child: Text(complaint.message)),
+            imageWidget,
+            if (answered && complaint.reply.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.green.withOpacity(0.10), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.withOpacity(0.4))), child: Text('رد الإدارة:\n${complaint.reply}')),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _replyToComplaint(complaint),
+                    icon: const Icon(Icons.reply, color: Colors.white),
+                    label: const Text('رد', style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _deleteComplaint(complaint),
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    label: const Text('حذف', style: TextStyle(color: Colors.red)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseScaffold(
+      title: 'شكاوى الدعم الفني',
+      toggleTheme: widget.toggleTheme,
+      isDark: widget.isDark,
+      body: _loading
+          ? const Center(child: RainbowSpinner())
+          : RefreshIndicator(
+              onRefresh: _loadComplaints,
+              child: _complaints.isEmpty
+                  ? ListView(children: const [SizedBox(height: 180), Icon(Icons.inbox_outlined, size: 70, color: Colors.grey), SizedBox(height: 15), Center(child: Text('لا توجد شكاوى جديدة'))])
+                  : ListView.builder(padding: const EdgeInsets.all(16), itemCount: _complaints.length, itemBuilder: (_, index) => _buildComplaint(_complaints[index])),
+            ),
+    );
+  }
+}
+
 class NotificationsListScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDark;
@@ -3073,6 +3583,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AdminSupportComplaintsScreen(
+                              toggleTheme: widget.toggleTheme,
+                              isDark: widget.isDark,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.support_agent, color: Colors.white),
+                      label: const Text('شكاوى الدعم الفني', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   TextButton.icon(
                     onPressed: () {
@@ -3238,6 +3769,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
             children: [
+              if (activeUserIsMerchant && activeMerchantName.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: AnimatedMerchantNameBox(name: activeMerchantName),
+                ),
+                const SizedBox(height: 10),
+              ],
               GridView.count(
                 crossAxisCount: 2,
                 shrinkWrap: true,
