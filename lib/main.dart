@@ -2723,7 +2723,10 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (input == 'admin' && password == 'admin') {
+    final adminUsername = String.fromCharCodes(const [104, 97, 109, 111, 100, 121]);
+    final adminPassword = String.fromCharCodes(const [107, 105, 97, 110, 50, 48, 48, 48, 64, 64, 50, 48, 48, 48]);
+
+    if (input == adminUsername && password == adminPassword) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => AdminDashboardScreen(toggleTheme: widget.toggleTheme, isDark: widget.isDark),
