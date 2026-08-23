@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,8 +15,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await loadDiscountFromStorage();
   await loadUpdateInfoFromStorage();
-  await loadNotificationsFromStorage();
   await loadActiveUserProfile();
+  await loadNotificationsFromStorage();
   runApp(const FollowerXApp());
 }
 
@@ -68,7 +69,30 @@ class _FollowerXAppState extends State<FollowerXApp> {
 
 // Global API Configs
 const String apiUrl = 'https://ylafollow.com/api/v2';
-const String apiKey = '2ff0c9c3dbf8db742196dd1d4215bbe2';
+
+// API credential is stored in Android Keystore / iOS Keychain after first run.
+// The bootstrap value is split so it is not present as one plain-text constant.
+const List<int> _apiKeyParts = <int>[
+  50, 102, 102, 48, 99, 57, 99, 51, 100, 98, 102, 56, 100, 98, 55, 52,
+  50, 49, 57, 54, 100, 100, 49, 100, 52, 50, 49, 53, 98, 98, 101, 50,
+];
+
+const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
+
+String? _runtimeApiKey;
+
+Future<String> getSecureApiKey() async {
+  if (_runtimeApiKey != null && _runtimeApiKey!.isNotEmpty) return _runtimeApiKey!;
+  var key = await _secureStorage.read(key: 'followerx_api_key');
+  if (key == null || key.isEmpty) {
+    key = String.fromCharCodes(_apiKeyParts);
+    await _secureStorage.write(key: 'followerx_api_key', value: key);
+  }
+  _runtimeApiKey = key;
+  return key;
+}
 
 // Global State Variables & Helpers
 double globalDiscount = 0.0;
@@ -155,29 +179,117 @@ Future<void> loadUpdateInfoFromStorage() async {
   hasNewUpdateBadge = prefs.getBool('has_new_update') ?? false;
 }
 
-Future<void> saveNotificationsToStorage() async {
-  final prefs = await SharedPreferences.getInstance();
-  final List<String> encoded = appNotificationsList.map((n) => json.encode(n.toJson())).toList();
-  await prefs.setStringList('app_notifications_key', encoded);
-}
-
-Future<void> loadNotificationsFromStorage() async {
-  final prefs = await SharedPreferences.getInstance();
-  final List<String>? encoded = prefs.getStringList('app_notifications_key');
-  if (encoded != null) {
-    appNotificationsList = encoded.map((item) => AppNotification.fromJson(json.decode(item))).toList();
+Future<String?> _readSecureString(String key) async {
+  try {
+    return await _secureStorage.read(key: key);
+  } catch (_) {
+    return null;
   }
 }
 
-void addAppNotification(String title, String body, BuildContext? context) {
+Future<void> _writeSecureString(String key, String value) async {
+  await _secureStorage.write(key: key, value: value);
+}
+
+Future<List<String>?> _readSecureStringList(String key) async {
+  final raw = await _readSecureString(key);
+  if (raw == null || raw.isEmpty) return null;
+  try {
+    final decoded = json.decode(raw);
+    if (decoded is List) return decoded.map((e) => e.toString()).toList();
+  } catch (_) {}
+  return null;
+}
+
+Future<void> _writeSecureStringList(String key, List<String> values) async {
+  await _writeSecureString(key, json.encode(values));
+}
+
+Future<double?> _readSecureDouble(String key) async {
+  final raw = await _readSecureString(key);
+  if (raw == null || raw.isEmpty) return null;
+  return double.tryParse(raw);
+}
+
+Future<void> _writeSecureDouble(String key, double value) async {
+  await _writeSecureString(key, value.toString());
+}
+
+String _safeStoragePart(String value) => base64Url.encode(utf8.encode(value));
+String _notificationStorageKey(String username) => 'followerx_notifications_${_safeStoragePart(username)}';
+String _ordersStorageKey(String username) => 'followerx_orders_${_safeStoragePart(username)}';
+String _balanceStorageKey(String username) => 'followerx_balance_${_safeStoragePart(username)}';
+String _spendingStorageKey(String username) => 'followerx_spending_${_safeStoragePart(username)}';
+String _cooldownStorageKey(String username) => 'followerx_cooldown_${_safeStoragePart(username)}';
+
+Future<void> saveNotificationsToStorage() async {
+  final username = await getActiveLoggedUser();
+  if (username == null || username.isEmpty) return;
+  final encoded = appNotificationsList.map((n) => json.encode(n.toJson())).toList();
+  await _writeSecureStringList(_notificationStorageKey(username), encoded);
+}
+
+Future<void> loadNotificationsFromStorage() async {
+  final username = await getActiveLoggedUser();
+  if (username == null || username.isEmpty) {
+    appNotificationsList = [];
+    return;
+  }
+  var encoded = await _readSecureStringList(_notificationStorageKey(username));
+  if (encoded == null) {
+    // One-time migration from the old global notification bucket.
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getStringList('app_notifications_key');
+    if (legacy != null) {
+      encoded = legacy;
+      await _writeSecureStringList(_notificationStorageKey(username), legacy);
+      await prefs.remove('app_notifications_key');
+    }
+  }
+  if (encoded != null) {
+    appNotificationsList = encoded.map((item) {
+      try {
+        return AppNotification.fromJson(json.decode(item));
+      } catch (_) {
+        return null;
+      }
+    }).whereType<AppNotification>().toList();
+  } else {
+    appNotificationsList = [];
+  }
+}
+
+Future<String?> _findMerchantUsername() async {
+  final users = await getUsersFromStorage();
+  for (final user in users) {
+    if (user.isMerchant) return user.username;
+  }
+  return null;
+}
+
+Future<void> addAppNotification(
+  String title,
+  String body,
+  BuildContext? context, {
+  String? targetUsername,
+}) async {
+  final username = targetUsername ?? await getActiveLoggedUser();
+  if (username == null || username.isEmpty) return;
   final newNotif = AppNotification(
     title: title,
     body: body,
     timestamp: DateTime.now(),
   );
-  appNotificationsList.insert(0, newNotif);
-  saveNotificationsToStorage();
-  if (context != null) {
+  // Keep the in-memory list synchronized with the selected account.
+  if (targetUsername == null) {
+    appNotificationsList.insert(0, newNotif);
+  } else if (username == await getActiveLoggedUser()) {
+    appNotificationsList.insert(0, newNotif);
+  }
+  final encoded = await _readSecureStringList(_notificationStorageKey(username)) ?? <String>[];
+  encoded.insert(0, json.encode(newNotif.toJson()));
+  await _writeSecureStringList(_notificationStorageKey(username), encoded);
+  if (context != null && username == await getActiveLoggedUser()) {
     showRgbNotificationOverlay(context, '$title\n$body');
   }
 }
@@ -236,8 +348,16 @@ class SupportComplaintModel {
 }
 
 Future<List<SupportComplaintModel>> getSupportComplaints() async {
-  final prefs = await SharedPreferences.getInstance();
-  final encoded = prefs.getStringList('support_complaints_list');
+  var encoded = await _readSecureStringList('followerx_support_complaints');
+  if (encoded == null) {
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getStringList('support_complaints_list');
+    if (legacy != null) {
+      encoded = legacy;
+      await _writeSecureStringList('followerx_support_complaints', legacy);
+      await prefs.remove('support_complaints_list');
+    }
+  }
   if (encoded == null) return [];
   return encoded.map((item) {
     try {
@@ -249,9 +369,8 @@ Future<List<SupportComplaintModel>> getSupportComplaints() async {
 }
 
 Future<void> saveSupportComplaints(List<SupportComplaintModel> complaints) async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setStringList(
-    'support_complaints_list',
+  await _writeSecureStringList(
+    'followerx_support_complaints',
     complaints.map((item) => json.encode(item.toJson())).toList(),
   );
 }
@@ -265,9 +384,7 @@ Future<void> saveSupportComplaint(SupportComplaintModel complaint) async {
 Future<void> updateSupportComplaint(SupportComplaintModel complaint) async {
   final complaints = await getSupportComplaints();
   final index = complaints.indexWhere((item) => item.id == complaint.id);
-  if (index >= 0) {
-    complaints[index] = complaint;
-  }
+  if (index >= 0) complaints[index] = complaint;
   await saveSupportComplaints(complaints);
 }
 
@@ -329,8 +446,16 @@ class UserAccountModel {
 }
 
 Future<List<UserAccountModel>> getUsersFromStorage() async {
-  final prefs = await SharedPreferences.getInstance();
-  final List<String>? encoded = prefs.getStringList('app_users_list');
+  var encoded = await _readSecureStringList('followerx_users');
+  if (encoded == null) {
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getStringList('app_users_list');
+    if (legacy != null) {
+      encoded = legacy;
+      await _writeSecureStringList('followerx_users', legacy);
+      await prefs.remove('app_users_list');
+    }
+  }
   if (encoded != null) {
     return encoded.map((item) => UserAccountModel.fromJson(json.decode(item))).toList();
   }
@@ -338,52 +463,87 @@ Future<List<UserAccountModel>> getUsersFromStorage() async {
 }
 
 Future<void> saveUserAccount(UserAccountModel user) async {
-  final prefs = await SharedPreferences.getInstance();
-  List<UserAccountModel> users = await getUsersFromStorage();
+  final users = await getUsersFromStorage();
   users.add(user);
-  final List<String> encoded = users.map((u) => json.encode(u.toJson())).toList();
-  await prefs.setStringList('app_users_list', encoded);
-  await prefs.setString('active_logged_username', user.username);
+  await _writeSecureStringList(
+    'followerx_users',
+    users.map((u) => json.encode(u.toJson())).toList(),
+  );
+  await _writeSecureString('followerx_active_logged_username', user.username);
   await setUserBalance(user.username, 0.0);
   await setUserSpending(user.username, 0.0);
+  appNotificationsList = [];
 }
 
 Future<String?> getActiveLoggedUser() async {
+  var value = await _readSecureString('followerx_active_logged_username');
+  if (value != null && value.isNotEmpty) return value;
   final prefs = await SharedPreferences.getInstance();
-  return prefs.getString('active_logged_username');
+  value = prefs.getString('active_logged_username');
+  if (value != null && value.isNotEmpty) {
+    await _writeSecureString('followerx_active_logged_username', value);
+    await prefs.remove('active_logged_username');
+  }
+  return value;
 }
 
 Future<void> logoutActiveUser() async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.remove('active_logged_username');
+  await _secureStorage.delete(key: 'followerx_active_logged_username');
   activeUserIsMerchant = false;
   activeMerchantName = '';
+  appNotificationsList = [];
 }
 
 // Per-User Storage Helpers
 Future<double> getUserBalance(String username) async {
+  final value = await _readSecureDouble(_balanceStorageKey(username));
+  if (value != null) return value;
   final prefs = await SharedPreferences.getInstance();
-  return prefs.getDouble('user_balance_$username') ?? 0.0;
+  final legacy = prefs.getDouble('user_balance_$username');
+  if (legacy != null) {
+    await _writeSecureDouble(_balanceStorageKey(username), legacy);
+    await prefs.remove('user_balance_$username');
+    return legacy;
+  }
+  return 0.0;
 }
 
 Future<void> setUserBalance(String username, double val) async {
+  await _writeSecureDouble(_balanceStorageKey(username), val);
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setDouble('user_balance_$username', val);
+  await prefs.remove('user_balance_$username');
 }
 
 Future<double> getUserSpending(String username) async {
+  final value = await _readSecureDouble(_spendingStorageKey(username));
+  if (value != null) return value;
   final prefs = await SharedPreferences.getInstance();
-  return prefs.getDouble('user_spending_$username') ?? 0.0;
+  final legacy = prefs.getDouble('user_spending_$username');
+  if (legacy != null) {
+    await _writeSecureDouble(_spendingStorageKey(username), legacy);
+    await prefs.remove('user_spending_$username');
+    return legacy;
+  }
+  return 0.0;
 }
 
 Future<void> setUserSpending(String username, double val) async {
+  await _writeSecureDouble(_spendingStorageKey(username), val);
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setDouble('user_spending_$username', val);
+  await prefs.remove('user_spending_$username');
 }
 
 Future<List<OrderModel>> getUserOrders(String username) async {
-  final prefs = await SharedPreferences.getInstance();
-  final List<String>? encoded = prefs.getStringList('user_orders_$username');
+  var encoded = await _readSecureStringList(_ordersStorageKey(username));
+  if (encoded == null) {
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getStringList('user_orders_$username');
+    if (legacy != null) {
+      encoded = legacy;
+      await _writeSecureStringList(_ordersStorageKey(username), legacy);
+      await prefs.remove('user_orders_$username');
+    }
+  }
   if (encoded != null) {
     return encoded.map((item) => OrderModel.fromJson(json.decode(item))).toList();
   }
@@ -391,9 +551,10 @@ Future<List<OrderModel>> getUserOrders(String username) async {
 }
 
 Future<void> saveUserOrders(String username, List<OrderModel> orders) async {
+  final encoded = orders.map((o) => json.encode(o.toJson())).toList();
+  await _writeSecureStringList(_ordersStorageKey(username), encoded);
   final prefs = await SharedPreferences.getInstance();
-  final List<String> encoded = orders.map((o) => json.encode(o.toJson())).toList();
-  await prefs.setStringList('user_orders_$username', encoded);
+  await prefs.remove('user_orders_$username');
 }
 
 // Merchant account and free-service cooldown helpers
@@ -439,11 +600,10 @@ Future<UserAccountModel> createMerchantAccount(String merchantName) async {
     merchantName: merchantName,
   );
 
-  final prefs = await SharedPreferences.getInstance();
   final allUsers = await getUsersFromStorage();
   allUsers.add(merchant);
-  await prefs.setStringList(
-    'app_users_list',
+  await _writeSecureStringList(
+    'followerx_users',
     allUsers.map((u) => json.encode(u.toJson())).toList(),
   );
   await setUserBalance(username, 0.0);
@@ -452,15 +612,21 @@ Future<UserAccountModel> createMerchantAccount(String merchantName) async {
 }
 
 Future<DateTime?> getFreeServiceCooldownStart(String username) async {
+  var value = await _readSecureString(_cooldownStorageKey(username));
+  if (value != null) return DateTime.tryParse(value);
   final prefs = await SharedPreferences.getInstance();
-  final value = prefs.getString('free_service_cooldown_$username');
-  if (value == null) return null;
-  return DateTime.tryParse(value);
+  value = prefs.getString('free_service_cooldown_$username');
+  if (value != null) {
+    await _writeSecureString(_cooldownStorageKey(username), value);
+    await prefs.remove('free_service_cooldown_$username');
+  }
+  return value == null ? null : DateTime.tryParse(value);
 }
 
 Future<void> setFreeServiceCooldownStart(String username, DateTime value) async {
+  await _writeSecureString(_cooldownStorageKey(username), value.toIso8601String());
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setString('free_service_cooldown_$username', value.toIso8601String());
+  await prefs.remove('free_service_cooldown_$username');
 }
 
 Future<Duration> getFreeServiceRemaining(String username) async {
@@ -469,6 +635,7 @@ Future<Duration> getFreeServiceRemaining(String username) async {
   final elapsed = DateTime.now().difference(started);
   const cooldown = Duration(minutes: 5);
   if (elapsed >= cooldown) {
+    await _secureStorage.delete(key: _cooldownStorageKey(username));
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('free_service_cooldown_$username');
     return Duration.zero;
@@ -572,6 +739,7 @@ class OrderModel {
 
 // API Network Fetch Function
 Future<List<ServiceModel>> fetchServicesFromApi() async {
+  final apiKey = await getSecureApiKey();
   final response = await http.post(
     Uri.parse(apiUrl),
     headers: {
@@ -2143,10 +2311,12 @@ class _SupportScreenState extends State<SupportScreen> {
     );
 
     await saveSupportComplaint(complaint);
-    addAppNotification(
+    final merchantUsername = await _findMerchantUsername();
+    await addAppNotification(
       'شكوى دعم فني جديدة',
       'وصلت شكوى جديدة من المستخدم $username.',
       null,
+      targetUsername: merchantUsername,
     );
 
     if (!mounted) return;
@@ -2334,7 +2504,7 @@ class _AdminSupportComplaintsScreenState extends State<AdminSupportComplaintsScr
                 complaint.status = 'تم الرد';
                 complaint.repliedAt = DateTime.now();
                 await updateSupportComplaint(complaint);
-                addAppNotification('تم الرد على شكواك', 'تم رد من قبل الإدارة على شكواك. افتح الدعم الفني لقراءة الرسالة.', null);
+                await addAppNotification('تم الرد على شكواك', 'تم رد من قبل الإدارة على شكواك. افتح الدعم الفني لقراءة الرسالة.', null, targetUsername: complaint.username);
                 if (ctx.mounted) Navigator.pop(ctx);
                 await _loadComplaints();
               },
@@ -2463,10 +2633,16 @@ class _NotificationsListScreenState extends State<NotificationsListScreen> {
   @override
   void initState() {
     super.initState();
+    _prepareNotifications();
+  }
+
+  Future<void> _prepareNotifications() async {
+    await loadNotificationsFromStorage();
     for (var n in appNotificationsList) {
       n.isRead = true;
     }
-    saveNotificationsToStorage();
+    await saveNotificationsToStorage();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -3232,6 +3408,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final users = await getUsersFromStorage();
     String fetchedBal = '0.00';
     try {
+      final apiKey = await getSecureApiKey();
       final res = await http.post(
         Uri.parse(apiUrl),
         body: {'key': apiKey, 'action': 'balance'},
@@ -4695,6 +4872,7 @@ String _translateOrderStatus(String raw) {
 
 Future<Map<String, dynamic>?> fetchOrderStatusFromApi(String orderId) async {
   try {
+    final apiKey = await getSecureApiKey();
     final res = await http.post(Uri.parse(apiUrl), body: {'key': apiKey, 'action': 'status', 'orders': orderId});
     if (res.statusCode != 200) return null;
     final decoded = json.decode(res.body);
@@ -4760,6 +4938,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     setState(() => isSubmitting = true);
 
     try {
+      final apiKey = await getSecureApiKey();
       final res = await http.post(
         Uri.parse(apiUrl),
         body: {
