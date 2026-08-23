@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -389,10 +390,21 @@ class AppLogoWidget extends StatelessWidget {
 }
 
 // Price Display Widget
+double getAppRate(String originalRateStr) {
+  final double originalRate = double.tryParse(originalRateStr) ?? 0.0;
+  if (originalRate <= 0) return 0.0;
+  final double markedUpRate = originalRate + 0.20;
+  if (globalDiscount > 0) {
+    return math.max(0.0, markedUpRate - globalDiscount);
+  }
+  return markedUpRate;
+}
+
 Widget buildPriceDisplay(String originalRateStr) {
   final double originalRate = double.tryParse(originalRateStr) ?? 0.0;
-  if (globalDiscount > 0) {
-    final double discountedRate = math.max(0.0, originalRate - globalDiscount);
+  final double appRate = getAppRate(originalRateStr);
+  if (originalRate > 0 && (globalDiscount > 0 || appRate != originalRate)) {
+    final double discountedRate = appRate;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1560,6 +1572,42 @@ class BaseScaffold extends StatelessWidget {
                   _showSettingsSheet(context);
                 },
               ),
+              FutureBuilder<String?>(
+                future: getActiveLoggedUser(),
+                builder: (context, snapshot) {
+                  final username = snapshot.data;
+                  if (username == null || username.isEmpty) return const SizedBox.shrink();
+                  return FutureBuilder<List<UserAccountModel>>(
+                    future: getUsersFromStorage(),
+                    builder: (context, usersSnapshot) {
+                      final users = usersSnapshot.data ?? const <UserAccountModel>[];
+                      UserAccountModel? user;
+                      for (final u in users) {
+                        if (u.username == username) { user = u; break; }
+                      }
+                      if (user == null) return const SizedBox.shrink();
+                      return Container(
+                        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('الحساب الحالي', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00A2FF))),
+                            const SizedBox(height: 6),
+                            Text(user.username, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 3),
+                            Text(user.email, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.redAccent),
                 title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)),
@@ -1929,7 +1977,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             shape: BoxShape.circle,
                             color: const Color(0xFF00A2FF).withOpacity(0.15),
                           ),
-                          child: const AppLogoWidget(size: 60),
+                          child: const Icon(Icons.lock_rounded, size: 60, color: Color(0xFF00A2FF)),
                         ),
                         const SizedBox(height: 25),
                         const Text(
@@ -2381,6 +2429,59 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  void _showRechargeUserDialog() {
+    final emailController = TextEditingController();
+    final usernameController = TextEditingController();
+    final amountController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('شحن حساب مستخدم'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: emailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: 'إيميل المستخدم', prefixIcon: const Icon(Icons.email_outlined), filled: true, fillColor: Theme.of(context).cardColor, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 10),
+            TextField(controller: usernameController, decoration: InputDecoration(labelText: 'اسم المستخدم', prefixIcon: const Icon(Icons.person_outline), filled: true, fillColor: Theme.of(context).cardColor, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 10),
+            TextField(controller: amountController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'كمية الفلوس', prefixIcon: const Icon(Icons.attach_money), filled: true, fillColor: Theme.of(context).cardColor, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+          ])),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A2FF)),
+              onPressed: () async {
+                final email = emailController.text.trim().toLowerCase();
+                final username = usernameController.text.trim();
+                final amount = double.tryParse(amountController.text.trim()) ?? 0.0;
+                if (email.isEmpty || username.isEmpty || amount <= 0) {
+                  showCustomAlertDialog(context, title: 'تنبيه', message: 'يرجى إدخال الإيميل واسم المستخدم والمبلغ بشكل صحيح.');
+                  return;
+                }
+                final users = await getUsersFromStorage();
+                UserAccountModel? matched;
+                for (final u in users) {
+                  if (u.email.toLowerCase() == email && u.username.toLowerCase() == username.toLowerCase()) { matched = u; break; }
+                }
+                if (matched == null) {
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (mounted) showCustomAlertDialog(context, title: 'الحساب غير موجود', message: 'لم يتم العثور على حساب يطابق الإيميل واسم المستخدم المدخلين.');
+                  return;
+                }
+                final oldBalance = await getUserBalance(matched.username);
+                await setUserBalance(matched.username, oldBalance + amount);
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) showRgbNotificationOverlay(context, 'تم شحن حساب ${matched.username} بمبلغ $${amount.toStringAsFixed(2)}');
+              },
+              child: const Text('إضافة', style: TextStyle(color: Colors.white)),
+            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showNewUpdateDialog() {
     final msgController = TextEditingController();
     final urlController = TextEditingController();
@@ -2517,6 +2618,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ],
                   ),
                   const SizedBox(height: 25),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _showRechargeUserDialog,
+                      icon: const Icon(Icons.account_balance_wallet, color: Colors.white),
+                      label: const Text('شحن حساب مستخدم', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -3385,6 +3497,19 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
               ),
             ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final uri = Uri.parse('https://wa.me/9647700000000?text=${Uri.encodeComponent('مرحباً، أريد شحن حسابي في Follower X Pro')}');
+                  if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                },
+                icon: const Icon(Icons.chat, color: Colors.white),
+                label: const Text('تواصل مع وكيلنا عبر واتساب لشحن حسابك', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+              ),
+            ),
             const SizedBox(height: 25),
             SizedBox(
               width: double.infinity,
@@ -3557,6 +3682,34 @@ class OrderFormScreen extends StatefulWidget {
   State<OrderFormScreen> createState() => _OrderFormScreenState();
 }
 
+bool _isInstagramService(ServiceModel service) {
+  final text = '${service.name} ${service.category}'.toLowerCase();
+  return text.contains('instagram') || text.contains('انستكرام') || text.contains('انستغرام') || text.contains('انستجرام') || text.contains('انستا');
+}
+
+String _translateOrderStatus(String raw) {
+  final s = raw.trim().toLowerCase();
+  if (s.contains('complete') || s.contains('completed') || s.contains('مكتمل') || s.contains('done')) return 'مكتمل';
+  if (s.contains('cancel') || s.contains('canceled') || s.contains('cancelled') || s.contains('ملغي')) return 'ملغي';
+  if (s.contains('partial') || s.contains('جزئي')) return 'مكتمل جزئياً';
+  if (s.contains('progress') || s.contains('processing') || s.contains('قيد التنفيذ') || s.contains('in progress')) return 'قيد التنفيذ';
+  return 'قيد الانتظار';
+}
+
+Future<Map<String, dynamic>?> fetchOrderStatusFromApi(String orderId) async {
+  try {
+    final res = await http.post(Uri.parse(apiUrl), body: {'key': apiKey, 'action': 'status', 'orders': orderId});
+    if (res.statusCode != 200) return null;
+    final decoded = json.decode(res.body);
+    if (decoded is Map<String, dynamic>) {
+      final item = decoded[orderId] ?? decoded[orderId.toString()];
+      if (item is Map<String, dynamic>) return item;
+      if (decoded.containsKey('status')) return decoded;
+    }
+  } catch (_) {}
+  return null;
+}
+
 class _OrderFormScreenState extends State<OrderFormScreen> {
   final _linkController = TextEditingController();
   final _quantityController = TextEditingController();
@@ -3565,13 +3718,9 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
 
   void _calculateCost(String val) {
     final qty = double.tryParse(val) ?? 0.0;
-    final rate = double.tryParse(widget.service.rate) ?? 0.0;
-    double actualRate = rate;
-    if (globalDiscount > 0) {
-      actualRate = math.max(0.0, rate - globalDiscount);
-    }
+    final appRate = getAppRate(widget.service.rate);
     setState(() {
-      calculatedCost = (qty / 1000) * actualRate;
+      calculatedCost = (qty / 1000) * appRate;
     });
   }
 
@@ -3752,6 +3901,13 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                 ],
               ),
             ),
+            if (_isInstagramService(widget.service))
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: AnimatedYellowWarningBox(
+                  text: 'لازم تخلي حسابك عام وتطفي زر المراجعة أو تمييز الحساب حتى تشتغل خدمات انستكرام بصورة صحيحة.',
+                ),
+              ),
             const SizedBox(height: 25),
             SizedBox(
               width: double.infinity,
@@ -3789,20 +3945,51 @@ class OrderHistoryScreen extends StatefulWidget {
 class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   List<OrderModel> orders = [];
   bool isLoading = true;
+  Timer? _statusTimer;
+  bool _refreshingStatuses = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserOrders();
+    _statusTimer = Timer.periodic(const Duration(seconds: 20), (_) => _refreshOrderStatuses());
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadUserOrders() async {
     final userOrds = await getUserOrders(widget.currentUser);
     if (mounted) {
-      setState(() {
-        orders = userOrds;
-        isLoading = false;
-      });
+      setState(() { orders = userOrds; isLoading = false; });
+    }
+    await _refreshOrderStatuses();
+  }
+
+  Future<void> _refreshOrderStatuses() async {
+    if (_refreshingStatuses || orders.isEmpty) return;
+    _refreshingStatuses = true;
+    try {
+      bool changed = false;
+      for (final order in List<OrderModel>.from(orders)) {
+        if (order.status == 'مكتمل' || order.status == 'ملغي') continue;
+        final data = await fetchOrderStatusFromApi(order.order);
+        if (data == null) continue;
+        final newStatus = _translateOrderStatus(data['status']?.toString() ?? order.status);
+        if (newStatus != order.status) {
+          order.status = newStatus;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await saveUserOrders(widget.currentUser, orders);
+        if (mounted) setState(() {});
+      }
+    } finally {
+      _refreshingStatuses = false;
     }
   }
 
