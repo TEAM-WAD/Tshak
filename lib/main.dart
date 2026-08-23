@@ -2471,7 +2471,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 final oldBalance = await getUserBalance(matched.username);
                 await setUserBalance(matched.username, oldBalance + amount);
                 if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) showRgbNotificationOverlay(context, 'تم شحن حساب ${matched.username} بمبلغ $${amount.toStringAsFixed(2)}');
+                if (mounted) showRgbNotificationOverlay(context, 'تم شحن حساب ${matched.username} بمبلغ \$${amount.toStringAsFixed(2)}');
               },
               child: const Text('إضافة', style: TextStyle(color: Colors.white)),
             ),
