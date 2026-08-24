@@ -50,6 +50,13 @@ jobs:
             flutter_test:
               sdk: flutter
             flutter_lints: ^3.0.0
+            flutter_launcher_icons: ^0.13.1
+
+          flutter_launcher_icons:
+            android: "launcher_icon"
+            ios: false
+            image_path: "icon.png"
+            min_sdk_android: 21
 
           flutter:
             uses-material-design: true
@@ -62,10 +69,12 @@ jobs:
             flutter create . --platforms=android --org=com.example
           fi
 
-      # إضافة كافة الصلاحيات وتفعيل مرور صور الشبكة عبر الإنترنت
+      # إضافة كافة الصلاحيات واسم التطبيق وتفعيل مرور صور الشبكة عبر الإنترنت
       - name: Inject Android Permissions and Network Image Support
         run: |
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          STRINGS_PATH="android/app/src/main/res/values/strings.xml"
+
           if [ -f "$MANIFEST_PATH" ]; then
             sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST_PATH"
             sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST_PATH"
@@ -73,10 +82,24 @@ jobs:
             sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>' "$MANIFEST_PATH"
             sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>' "$MANIFEST_PATH"
             sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST_PATH"
+            
+            # ضبط اسم التطبيق بالمسافة
+            sed -i 's/android:label="[^"]*"/android:label="𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ"/' "$MANIFEST_PATH"
+          fi
+
+          if [ -f "$STRINGS_PATH" ]; then
+            sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">Follwer X<\/string>/' "$STRINGS_PATH"
           fi
 
       - name: Install Dependencies
         run: flutter pub get
+
+      # توليد أيقونة التطبيق تلقائياً من صورة icon.png
+      - name: Generate Launcher Icons
+        run: |
+          if [ -f "icon.png" ]; then
+            dart run flutter_launcher_icons
+          fi
 
       # إصلاح ملف ProGuard للمكتبات المنسخة تلقائياً
       - name: Fix Deprecated Proguard Rules
