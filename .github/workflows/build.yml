@@ -23,7 +23,7 @@ jobs:
         with:
           channel: 'stable'
 
-      # إنشاء ملف pubspec.yaml وتضمين المكتبات الأساسية فقط
+      # إنشاء ملف pubspec.yaml وتضمين المكتبات والـ assets
       - name: Create pubspec.yaml automatically
         run: |
           cat <<'EOF' > pubspec.yaml
@@ -60,6 +60,8 @@ jobs:
 
           flutter:
             uses-material-design: true
+            assets:
+              - assets/
           EOF
 
       # إعادة إنشاء مجلد Android المفقود تلقائياً
