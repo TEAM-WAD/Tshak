@@ -4473,7 +4473,7 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'دفع مباشر عبر البطاقات البنكية',
               icon: Icons.credit_card,
               iconColor: Colors.orange,
-              onTap: () => _navigateToDetail(context, 'ماستر كارد', '07700000000'),
+              onTap: () => _navigateToDetail(context, 'ماستر كارد', '07782267432'),
             ),
             const SizedBox(height: 15),
             _buildPaymentTile(
@@ -4482,7 +4482,7 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'تحويل رصيد أو كارتات شحن',
               icon: Icons.phone_android,
               iconColor: Colors.redAccent,
-              onTap: () => _navigateToDetail(context, 'آسيا سيل', '07701234567'),
+              onTap: () => _navigateToDetail(context, 'آسيا سيل', '07782267432'),
             ),
             const SizedBox(height: 15),
             _buildPaymentTile(
@@ -4491,7 +4491,7 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'الدفع المباشر عبر محفظة زين كاش',
               icon: Icons.account_balance_wallet,
               iconColor: Colors.pink,
-              onTap: () => _navigateToDetail(context, 'زين كاش', '07801234567'),
+              onTap: () => _navigateToDetail(context, 'زين كاش', '07782267432'),
             ),
             const SizedBox(height: 15),
             _buildPaymentTile(
@@ -4500,7 +4500,7 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'تحويل رصيد عبر خطوط زين العراق',
               icon: Icons.cell_tower,
               iconColor: Colors.purple,
-              onTap: () => _navigateToDetail(context, 'زين العراق', '07809876543'),
+              onTap: () => _navigateToDetail(context, 'زين العراق', '07782267432'),
             ),
             const SizedBox(height: 15),
             _buildPaymentTile(
@@ -4509,7 +4509,7 @@ class AddFundsScreen extends StatelessWidget {
               subtitle: 'تحويل أموال مباشر عبر آسيا حوالة',
               icon: Icons.send_to_mobile,
               iconColor: Colors.teal,
-              onTap: () => _navigateToDetail(context, 'آسيا حواله', '07709876543'),
+              onTap: () => _navigateToDetail(context, 'آسيا حواله', '07782267432'),
             ),
           ],
         ),
@@ -4723,7 +4723,7 @@ class _PaymentDetailScreenState extends State<PaymentDetailScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () async {
-                  final uri = Uri.parse('https://wa.me/9647700000000?text=${Uri.encodeComponent('مرحباً، أريد شحن حسابي في Follower X Pro')}');
+                  final uri = Uri.parse('https://wa.me/96407782267432?text=${Uri.encodeComponent('مرحباً، أريد شحن حسابي في Follower X Pro')}');
                   if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
                 },
                 icon: const Icon(Icons.chat, color: Colors.white),
