@@ -2002,26 +2002,9 @@ class BaseScaffold extends StatelessWidget {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           centerTitle: true,
-          title: FutureBuilder<String?>(
-            future: getActiveLoggedUser(),
-            builder: (context, snapshot) {
-              if (!activeUserIsMerchant || activeMerchantName.isEmpty) {
-                return showHeaderTitle
-                    ? const DynamicBorderTitleBox(text: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', isLarge: true)
-                    : DynamicBorderTitleBox(text: title);
-              }
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  showHeaderTitle
-                      ? const DynamicBorderTitleBox(text: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', isLarge: true)
-                      : DynamicBorderTitleBox(text: title),
-                  const SizedBox(height: 3),
-                  AnimatedMerchantNameBox(name: activeMerchantName),
-                ],
-              );
-            },
-          ),
+          title: showHeaderTitle
+              ? const DynamicBorderTitleBox(text: '𝖿᥆𝗅𝗅ᥕ𝖾𝗋 ꪎ 𝗉𝗋᥆', isLarge: true)
+              : DynamicBorderTitleBox(text: title),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, size: 22),
             onPressed: () => Navigator.maybePop(context),
@@ -3848,6 +3831,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   
   Timer? _totalOrdersTimer;
   Timer? _mostRequestedTimer;
+  Timer? _bannerTimer;
+  int _currentBannerIndex = 0;
+  final PageController _bannerPageController = PageController();
+
+  static const List<String> _bannerImages = [
+    'assets/banner1.jpg',
+    'assets/banner2.jpg',
+    'assets/banner3.jpg',
+    'assets/banner4.jpg',
+    'assets/banner5.jpg',
+    'assets/banner6.jpg',
+  ];
 
   late AnimationController _borderAnimController;
 
@@ -3861,6 +3856,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     _loadUserData();
     _fetchAllServices();
+
+    // تغيير صور البانر تلقائياً كل 3 ثوانٍ مع انتقال سلس.
+    _bannerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (!mounted || !_bannerPageController.hasClients) return;
+      _currentBannerIndex = (_currentBannerIndex + 1) % _bannerImages.length;
+      _bannerPageController.animateToPage(
+        _currentBannerIndex,
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeInOutCubic,
+      );
+      setState(() {});
+    });
 
     // Increment total orders count dynamically online
     _totalOrdersTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
@@ -3882,6 +3889,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _borderAnimController.dispose();
     _totalOrdersTimer?.cancel();
     _mostRequestedTimer?.cancel();
+    _bannerTimer?.cancel();
+    _bannerPageController.dispose();
     super.dispose();
   }
 
@@ -3956,6 +3965,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 10),
               ],
+              _buildBannerCarousel(),
+              const SizedBox(height: 14),
               GridView.count(
                 crossAxisCount: 2,
                 shrinkWrap: true,
@@ -4109,6 +4120,85 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBannerCarousel() {
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: SizedBox(
+            width: double.infinity,
+            height: 155,
+            child: PageView.builder(
+              controller: _bannerPageController,
+              itemCount: _bannerImages.length,
+              onPageChanged: (index) {
+                if (!mounted) return;
+                setState(() => _currentBannerIndex = index);
+              },
+              itemBuilder: (context, index) {
+                return Container(
+                  width: double.infinity,
+                  color: Theme.of(context).cardColor,
+                  child: Image.asset(
+                    _bannerImages[index],
+                    width: double.infinity,
+                    height: 155,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF00A2FF), Color(0xFF0066FF)],
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.image_outlined, color: Colors.white, size: 38),
+                            SizedBox(height: 8),
+                            Text(
+                              'ضع صورة البانر داخل مجلد assets',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 9),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            _bannerImages.length,
+            (index) => AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: _currentBannerIndex == index ? 20 : 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: _currentBannerIndex == index
+                    ? const Color(0xFF00A2FF)
+                    : Colors.grey.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
